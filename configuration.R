@@ -363,6 +363,14 @@ uploadDHIS2_metaData <- function(obj, obj_type, usr, pwd, url='https://zl-dsp.pi
 
 
 # TRACKER SPECIFIC FUNCTIONS -----------------------------------------------------------------------
+uploadDHIS2_trackerConfig <- function(tracker_config) {
+  # upload a tracker config object pulled from scrapeDHIS2_trackerConfigFile()
+  
+  # first thing, create the options and option sets
+  
+  
+}
+
 scrapeDHIS2_trackerConfigFile <- function(filename) {
   # Going to write this one with openxlsx
   # Import a file with Tracker configuration info

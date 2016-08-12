@@ -1,0 +1,385 @@
+library(XLConnect)
+library(stringi)
+library(magrittr)
+library(plyr)
+library(rlist)
+
+# source('api.R')
+# source('translations.R')
+# source('payload_creation.R')
+# source('translations.R')
+# source('utilities.R')
+
+# META DATA FILE SCRAPING AND UPLOAD --------------------------------------------------------------
+# This function uses many of the functions below to combine into one cohesive scraping function. 
+# It takes in an excel configuration file, parses out each different part and then posts to the 
+# dhis2 server.  It currently supports data elements, category combos, categories, and category options.
+
+uploadDHIS2_configFile <- function(filename, usr, pwd, url='https://zl-dsp.pih.org/api/', overwrite=F, prompt_overwrite=T, verbose=F, object=NA) {
+  # Take a meta data config file, scrape the data off and 
+  # upload to dhis2 server for each part. Currently supports
+  # category options, categories, category combinations, and data elements
+  # still need to add user, indicator, and data set import
+  # for now assuming that the file has all of the necessary tabs and information
+  # overwrite indicates of overwriting of existing config is allowed.  if overwrite==T
+  # will prompt for permission on all potential overwriting operations
+  
+  # Ex.
+  # > uploadConfig('meta-data-config.xlsx', u, p, url)
+  # Creating Options
+  # Creating Categories
+  # Creating Category Combinations
+  # Creating Data Elements
+  # Config Uploaded in 1.34 minutes
+  startTime <- Sys.time()
+  
+  # we can pass in an already parsed object instead of having to scrape a file
+  if (is.na(object)) {
+    config <- scrapeDHIS2_configFile(filename)
+    cat('\n')
+  }
+  else {
+    config <- object
+    rm(object)
+    cat('Using already existing config object.\n\n')
+  }
+
+  
+  results <- list()
+  config <- config[names(config) != ('importSummary')]
+  for (obj in 1:length(config)) {
+    # upload each object type as defined  by the list name and data inside that object
+    # determine appropriate format using uploadDHIS2_metaData() switch to appropriately
+    # structure upload.
+    
+    obj_type <- names(config)[obj]
+    resp <- list(uploadDHIS2_metaData(config[[obj]], obj_type = obj_type, usr, pwd, url, 
+                                         overwrite=overwrite, prompt=prompt_overwrite, verbose=verbose))
+    names(resp) <- obj_type 
+    results <- append(results, resp)
+  }
+  
+  cat("------------------ Upload Completed ------------------\n")
+  print(t(as.data.frame.list(lapply(results, function(x) unlist(lapply(x, function(j) lapply(j, function(i) length(i))))))))
+  print(round(Sys.time() - startTime,2))
+  return(results)
+  
+  
+}
+
+removeDHIS2_configFile <- function(filename, usr, pwd, url='https://zl-dsp.pih.org/api/', de=T, catCombo=T, cats=T, options=F) {
+  # Scrape config file and remove configuration elements based on the parameters set to TRUE
+  # BE CAREFUL removing options.  This could cause problems with other areas that use the same 
+  # values.  Make sure to check first. 
+  
+  # First import the file
+  config <- scrapeDHIS2_configFile(filename)
+  result <- list()
+  
+  if (de== T) {
+    if (length(config$dataElements$dataElement) > 0) { # check if we matched anything
+      deleted <- list(deleteDHIS2_objects(obj_names = config$dataElements$dataElement, obj_type='dataElements', usr=usr, pwd=pwd, url=url))
+      names(deleted) <- 'dataElements'
+      result <- append(result, deleted)
+      
+      
+    }
+  }
+  # remove the data elements
+  
+  if (catCombo == T) {
+    
+    # Before we can delete the categoryCombos, we need to check and remove any categoryOptionCombos associated
+    categoryCombos <- getDHIS2_Resource('categoryCombos', usr, pwd, url) # download the current list
+    catCombos_remove <- config$categoryCombos$Category.Combo.Name
+    catCombos_remove <- catCombos_remove[catCombos_remove != "default"]
+    if (!is.null(catCombos_remove)) {
+      catCombo_ids <- categoryCombos$id[categoryCombos$displayName %in% catCombos_remove]
+      catComboErrors <- c()
+      sub_results <- list()
+      for (cc_id in catCombo_ids) {
+        catCombo <- content(getDHIS2_elementInfo(cc_id, 'categoryCombos', usr, pwd, url))
+        if (!is.null(names(catCombo))) {
+          catOptCombos_ids <- unlist(catCombo$categoryOptionCombos)
+          if (length(catOptCombos_ids) > 0) {
+            deleted <- list(deleteDHIS2_objects(ids= catOptCombos_ids, obj_type='categoryOptionCombos', usr=usr, pwd=pwd, url=url))
+            names(deleted) <- 'categoryOptionCombos'
+            sub_results <- append(result, deleted )
+            
+          }
+        }
+        else {
+          cat('something went wrong with ', cc_id, "\n")
+          catComboErrors <- c(catComboErrors, cc_id)
+        }
+      }
+    }
+    result <- append(result, sub_results)
+    deleted <- list(deleteDHIS2_objects(ids= catCombo_ids, obj_type='categoryCombos', usr=usr, pwd=pwd, url=url))
+    names(deleted) <- 'categoryCombos'
+    result <- append(result, deleted)
+    
+  }
+  
+  if (cats==T) {
+    deleted <- list(deleteDHIS2_objects(config$categories$Disaggreation.Category.Name..alphabetical.order., obj_type='categories', usr=usr, pwd=pwd, url=url))
+    names(deleted)
+    result <- append(result, deleted)
+  }
+  
+  if (options==T) {
+    deleted <- list(deleteDHIS2_objects(config$categoryOptions, obj_type='categoryOptions', usr=usr, pwd=pwd, url=url))
+    names(deleted) <- 'categoryOptions'
+    result <- append(result, deleted)
+  }
+  
+  return(result)
+  
+}
+
+scrapeDHIS2_configFile <- function(filename) {
+  # Take a meta data config file, scrape the data off and 
+  # upload to dhis2 server for each part. Currently supports
+  # category options, categories, category combinations, and data elements
+  # still need to add user, indicator, and data set import
+  # for now assuming that the file has all of the necessary tabs and information
+  # overwrite indicates of overwriting of existing config is allowed.  if overwrite==T
+  # will prompt for permission on all potential overwriting operations
+  
+  # Ex.
+  # > uploadConfig('meta-data-config.xlsx', u, p, url)
+  # Creating Options
+  # Creating Categories
+  # Creating Category Combinations
+  # Creating Data Elements
+  # Config Uploaded in 1.34 minutes
+  startTime <- Sys.time()
+  
+  wb <- loadWorkbook(filename)
+  
+  # Load all of the options we're working with
+  catOptions <- readWorksheet(wb, 'Category Options')
+  
+  # CREATE OPTIONS -----------------------------------------------------------
+  # take just the options listed, remove na values, and duplicates to just
+  # return the unique options we're working with
+  options <- as.data.frame(catOptions[,-1] %>% .[!is.na(.)] %>% .[!duplicated(.)])
+  names(options) <- 'options'
+  
+  # CREATE CATEGORIES --------------------------------------------------------
+  dataElements <- readWorksheet(wb, "Data Elements")
+  columns <- c(findColumn_index('Data.Element.Name', dataElements, "Can't determine column with DATA ELEMENT name!", 'Please specify data element column number: '),
+               findColumn_index('Short.Name', dataElements, "Can't determine column with SHORT NAME!", 'Please specify short name column number: '),
+               findColumn_index('Code', dataElements, "Can't determine column with SHORT NAME!", 'Please specify short name column number: '),
+               findColumn_index('Description',dataElements, "Can't determine column with DESCRIPTION", 'Please specify description column number: '),
+               findColumn_index("Value.Type", dataElements,"Can't determine column with VALUE TYPE!",'Please specify value type column number: '),
+               findColumn_index('Aggregation.Type',dataElements, "Can't determine column with AGGREGATION TYPE!", 'Please specify aggregation type column number: '),
+               findColumn_index('Category.Combo',dataElements, "Can't determine column with CATEGORY COMBINATION", 'Please specify category combo column number: '),
+               findColumn_index('Form.Name',dataElements, "Can't determine column with FORM NAME", 'Please specify form name column number: '),
+               findColumn_index('Dataset',dataElements, "Can't determine column with DATASET", 'Please specify form name column number: '),
+               findColumn_index('Group', dataElements, "Can't determine column with DATAELEMENTGROUP", 'Please specify form name column number: ')
+               
+               
+  )
+  # CREATE THE CATEGORY COMBINATIONS -----------------------------------------------
+  catCombos <- dataElements[,c(grep('Category', names(dataElements))),drop=F]
+  catCombos[,1] <- revalue(catCombos[,1], c('None'='default'))
+  catCombos <- catCombos[1:length(catCombos[,1][!is.na(catCombos[,1])]),, drop=F]
+  catCombos <- catCombos[!duplicated(catCombos[,1]),,drop=F]
+  
+  # DATA ELEMENTS -----------------------------------------------------------------
+  dataElements <- dataElements[,columns] 
+  names(dataElements) <- c('dataElement','shortName','code', 'description', 'valueType', 'aggregationType', 'categoryCombo', 'formName', 'dataSet', 'dataElementGroup')
+  dataElements <- dataElements[1:length(dataElements$dataElement[!is.na(dataElements$dataElement)]),]
+  dataElements$categoryCombo <- revalue(dataElements$categoryCombo, c('None'='default'))
+  
+  # DATA ELEMENT GROUP
+  # import the dataElementGroup names
+  dataElementGroups <- readWorksheet(wb, 'Data Element Groups')
+  names(dataElementGroups) <- c('name', 'shortName', 'aggregationType')
+  # now find the matching dataElements from that page
+  for (deg in dataElementGroups$name[!is.na(dataElementGroups$name)]) {
+    de <- dataElements$dataElement[grep(deg, dataElements$dataElementGroup)]
+    dataElementGroups$dataElements[dataElementGroups$name == deg] <- list(de[!is.na(de)])
+    rm(de)
+  }
+  
+  
+  
+  # DATA SETS ---------------------------------------------------------------------
+  # this one is going to be slightly different as we need information on two pages
+  dataSets <- readWorksheet(wb, 'Dataset')
+  for (ds in dataSets$Dataset.Name[!is.na(dataSets$Dataset.Name)]) {
+    de <- dataElements$dataElement[dataElements$dataSet == ds]
+    dataSets$dataElements[dataSets$Dataset.Name == ds] <- list(de[!is.na(de)])
+  }
+  names(dataSets) <- c('dataSet', 'frequency', 'ou_level', 'attribute', 'catCombo', 'dataElements')
+  
+  # USER ROLES -------------------------------------------------------------------
+  # userRoles <- readWorksheet(wb, 'User Roles')
+
+  # USER INVITATION --------------------------------------------------------------
+  
+  
+  config <- list('dataElements' = dataElements, 'dataElementGroups' = dataElementGroups,
+                 'categoryCombos' = catCombos, 'categories'= catOptions, 
+                 'categoryOptions' = options, 'dataSets' = dataSets)
+  
+  cat("----- Scrape Completed -----\n")
+  print(Sys.time() - startTime)
+  cat('Summary:\n')
+  summary <- as.data.frame.list(lapply(config, function(x) {nrow(x[1])}))
+  print(summary)
+  summary <- list(summary)
+  names(summary) <- 'importSummary'
+  return(append(config, summary))
+  
+  
+}
+
+
+cloneDHIS2_userRole <- function(id, usr, pwd, url='https://zl-dsp.pih.org/api/', new_name) {
+  # Clone an existing user role as a new role with new name
+  # useful for copying exact priviliges and permissions
+  # This ignores dataset associations or current user associations. 
+  
+  payload <- content(getDHIS2_elementInfo(id, 'userRoles', usr, pwd, url))
+  
+  payload <- payload[!(names(payload) %in% c('users','id','href', 'created', 'lastUpdated','dataSets'))]
+  
+  payload$name <- new_name
+  resp <- postDHIS2_metaData(payload, usr, pwd, type='userRoles')
+  return(resp)
+}
+
+# METADATA UPLOAD BASE FUNCTION --------------------------------------------------------------------
+uploadDHIS2_metaData <- function(obj, obj_type, usr, pwd, url='https://zl-dsp.pih.org/api/',overwrite=F, prompt=T, verbose=F) {
+  # take objects from scrapeDHIS2_configFile() and create the appropriate configuration in the system.  this will check if the settings already exist in 
+  # the system and will skip those unless overwrite=T.  if prompt or verbose are set to T, lots of text will output.  Otherwise, existing configs 
+  # will be overwritten automatically and a simple status output will display.  THIS COULD BE DANGEROUS IF YOU ARE NOT CERTAIN THERE ARE NO OVERLAPPING CONFIGURATIONS
+  cat('------------------ Starting',toupper(obj_type),'Upload -------------------------\n')
+  # check category combinations that exist in the system
+  existingObjects <- getDHIS2_Resource(obj_type, usr, pwd, url)
+  # set up some empty counts and objects to return
+  req <- list('updated' = list(), 'uploaded' = list(), 'skipped' = list())
+  
+  # check categories per combination are the same
+  
+  for (cc in 1:nrow(obj)) {
+    # create the upload object.  We can take advantage of R's switch() function and use obj_type 
+    # to determine how it will structure the upload object
+    
+    upload <- switch(obj_type,
+                     'dataElements' = ({
+                       dataElement <- obj[cc,,drop=F] # the row we're looking at
+                       de_name <- dataElement[1,1] # the name
+                       createDHIS2_DataElement(de_name, shortName = dataElement$shortName, aggregationType = dataElement$aggregationType,
+                                               valueType = dataElement$valueType, categoryCombo = dataElement$categoryCombo, 
+                                               description = dataElement$description, formName= dataElement$formName, 
+                                               code= dataElement$code)
+                     }),
+                     'categoryCombos' = ({
+                       catCombo <- obj[cc,] # the row we're looking at
+                       cat_name <- catCombo[1,1] # the first column is the name
+                       cats <- catCombo[-1] %>% .[!is.na(.)] %>% .[!duplicated(.)] # remove the name column and any NA columns, for good measure, remove dupes
+                       createDHIS2_CategoryCombo(cat_name, cats, shortName = cat_name) # make the 
+                     }),
+                     'categories' = ({ # this follows the same format as above
+                       category <- obj[cc,]
+                       cat_name <- category[1,1]
+                       opts <- category[,-1] %>% .[!is.na(.)] %>% .[!duplicated(.)]
+                       createDHIS2_Category(cat_name, opts, shortName = cat_name)
+                     }),
+                     'categoryOptions' = ({
+                       createDHIS2_CategoryOption(as.character(obj[cc,1]))
+                     }),
+                     'dataSets' = ({
+                       ds <- obj[cc,]
+                       createDHIS2_DataSet(ds$dataSet, dataElements = unlist(ds$dataElements), periodType = ds$frequency)
+                     }),
+                     'dataElementGroups' = ({
+                       deg <- obj[cc,,drop=F]
+                       createDHIS2_DataElementGroup(deg$name, deg$shortName, deg$aggregationType, dataElements= unlist(deg$dataElements))
+                     }),
+                     'translations' = ({
+                       trans <- obj[cc,]
+                       createDHIS2_translation(trans$value, trans$property, trans$locale, trans$objectId, trans$className)
+                     })
+    )
+    
+    if (upload$name %in% existingObjects$displayName == TRUE & overwrite == T & upload$name != "default" & obj_type != 'categoryOptions') {
+      # does this name already exist in the system? if it does, 
+      # and overwrite == T, prompt for permission on each catCombo that already
+      # exists
+      # get the id
+      id <- existingObjects$id[existingObjects$displayName %in% upload$name] 
+      # download the detailed information on the category combination
+      # get the ids of the attached categories
+      
+      if (verbose == T | prompt == T) {
+        object_relationship <- getDHIS2_objectChildren(id, obj_type, usr, pwd, url)
+        # do the ids match? if so, answer will be TRUE
+        cat("\nObject with that name already exists and has the following options:\n")
+        print(object_relationship$parent)
+        cat('Attempted children to upload:\n')
+        print(object_relationship$children)
+        ifelse(prompt==T, resp <- confirmAction('Overwrite existing configuration? Y/N: '), resp <- "Y")
+      }
+      else {
+        resp <- "Y"
+      }
+      if (resp == "Y") {
+        resp <- content(putDHIS2_metaData(upload, usr, pwd, paste0(url, obj_type, '/',id), verbose=verbose))
+        req$updated %<>% append(., list(list('name' = upload$name, 'response' = list(resp))))
+      }
+      
+    }
+    else if (upload$name %in% existingObjects$displayName == FALSE) {
+      # any categories that DO NOT exist at all will always be uploaded
+      resp <- content(postDHIS2_metaData(upload, usr, pwd, url, type=obj_type, verbose=verbose))
+      req$uploaded %<>% append(., list(list('name' = upload$name, 'response' = list(resp))))
+    }
+    else {
+      if (verbose==T) cat("Skipping!")
+      req$skipped %<>% append(., list(list('name' = upload$name, 'response' = list(upload))))
+    }
+    Sys.sleep(runif(1, 0, .1))
+    flush.console()
+    ifelse(nchar(upload$name) > 40, extend <- "...                             ",extend <- "                                ")
+    print_name <- stri_sub(paste0(stri_sub(upload$name, length=40),extend), length=45)
+    cat('\rCURRENT-->', cc, "|", nrow(obj), '\tObject:', print_name ,'\tTOTALS--> Uploaded:', length(req$uploaded), 'Updated:', length(req$updated), 'Skipped:', length(req$skipped),rep('\t',15))
+    
+    # cat(c('\r',rep('\t',35),'\r'))
+  }
+  cat('\n----------------- Completed',toupper(obj_type),'Upload -------------------------\n')
+  
+  cat("Uploaded", length(req$uploaded), 'objects\n')
+  cat("Updated", length(req$updated), 'already existing objects\n')
+  cat("Skipped", length(req$skipped), 'already existing objects\n\n')
+  
+  return(req)
+  
+}
+
+
+# TRACKER SPECIFIC FUNCTIONS -----------------------------------------------------------------------
+scrapeDHIS2_trackerConfigFile <- function(filename) {
+  # Going to write this one with openxlsx
+  # Import a file with Tracker configuration info
+  
+  worksheets <- c('Program', 'Option Sets', 'Attributes', 'Stages', 'Data Elements')
+  
+  config <- lapply(worksheets, function(x) openxlsx::readWorkbook(filename, x))
+  names(config) <- c('programs', 'optionSets', 'trackedEntityAttributes', 'programStages', 'programStageDataElements')
+  
+  # drop some of the extra rows thanks to the config file shortname check
+  config$programStageDataElements <- config$programStageDataElements[!is.na(config$programStageDataElements[,1]),]
+  
+  # add options object to be created before option sets
+  options <- unlist(config$optionSets[,2:ncol(config$optionSets)])
+  config$options <- options[!is.na(options)]
+  
+  return(config)
+
+}
+

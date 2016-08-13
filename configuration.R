@@ -15,7 +15,7 @@ library(rlist)
 # It takes in an excel configuration file, parses out each different part and then posts to the 
 # dhis2 server.  It currently supports data elements, category combos, categories, and category options.
 
-uploadDHIS2_configFile <- function(filename, usr, pwd, url='https://zl-dsp.pih.org/api/', overwrite=F, prompt_overwrite=T, verbose=F, object=NA) {
+uploadDHIS2_configFile <- function(filename, usr, pwd, url, overwrite=F, prompt_overwrite=T, verbose=F, object=NA) {
   # Take a meta data config file, scrape the data off and 
   # upload to dhis2 server for each part. Currently supports
   # category options, categories, category combinations, and data elements
@@ -67,7 +67,7 @@ uploadDHIS2_configFile <- function(filename, usr, pwd, url='https://zl-dsp.pih.o
   
 }
 
-removeDHIS2_configFile <- function(filename, usr, pwd, url='https://zl-dsp.pih.org/api/', de=T, catCombo=T, cats=T, options=F) {
+removeDHIS2_configFile <- function(filename, usr, pwd, url, de=T, catCombo=T, cats=T, options=F) {
   # Scrape config file and remove configuration elements based on the parameters set to TRUE
   # BE CAREFUL removing options.  This could cause problems with other areas that use the same 
   # values.  Make sure to check first. 
@@ -238,7 +238,7 @@ scrapeDHIS2_configFile <- function(filename) {
 }
 
 
-cloneDHIS2_userRole <- function(id, usr, pwd, url='https://zl-dsp.pih.org/api/', new_name) {
+cloneDHIS2_userRole <- function(id, usr, pwd, url, new_name) {
   # Clone an existing user role as a new role with new name
   # useful for copying exact priviliges and permissions
   # This ignores dataset associations or current user associations. 
@@ -253,7 +253,7 @@ cloneDHIS2_userRole <- function(id, usr, pwd, url='https://zl-dsp.pih.org/api/',
 }
 
 # METADATA UPLOAD BASE FUNCTION --------------------------------------------------------------------
-uploadDHIS2_metaData <- function(obj, obj_type, usr, pwd, url='https://zl-dsp.pih.org/api/',overwrite=F, prompt=T, verbose=F) {
+uploadDHIS2_metaData <- function(obj, obj_type, usr, pwd, url,overwrite=F, prompt=T, verbose=F) {
   # take objects from scrapeDHIS2_configFile() and create the appropriate configuration in the system.  this will check if the settings already exist in 
   # the system and will skip those unless overwrite=T.  if prompt or verbose are set to T, lots of text will output.  Otherwise, existing configs 
   # will be overwritten automatically and a simple status output will display.  THIS COULD BE DANGEROUS IF YOU ARE NOT CERTAIN THERE ARE NO OVERLAPPING CONFIGURATIONS
@@ -363,13 +363,157 @@ uploadDHIS2_metaData <- function(obj, obj_type, usr, pwd, url='https://zl-dsp.pi
 
 
 # TRACKER SPECIFIC FUNCTIONS -----------------------------------------------------------------------
-uploadDHIS2_trackerConfig <- function(tracker_config) {
+uploadDHIS2_trackerConfig <- function(tracker_config, usr, pwd, url) {
   # upload a tracker config object pulled from scrapeDHIS2_trackerConfigFile()
   
   # first thing, create the options and option sets
+  options <- getDHIS2_Resource('options', usr, pwd, url)
+  options_created <- list()
+  for (i in tracker_config$options[!(tracker_config$options %in% options$displayName)]) {
+    options_created <- append(options_created, list(postDHIS2_metaData(createDHIS2_option(i, i), usr, pwd, url, 'options')))
+  }
+  
+  # Update the list of options
+  options <- getDHIS2_Resource('options', usr, pwd, url)
+  optionSets <- getDHIS2_Resource('optionSets', usr, pwd, url)
+  
+  optionSets_created <- list()
+  for (i in 1:nrow(tracker_config$optionSets)) {
+    optSet <- tracker_config$optionSets[i,]
+    opts <- optSet[1,2:ncol(optSet)]
+    opts <- opts[!is.na(opts)]
+    opt_ids <- options[options$displayName %in% opts,]
+    # double check there aren't dupes in the system
+    if (nrow(opt_ids) != length(opts)) {
+      cat("Multiple options available. Please specify.\nStated options:\n")
+      print(opts)
+      cat("Options matched from system:\n")
+      rownames(opt_ids) <- 1:nrow(opt_ids)
+      print(opt_ids)
+      row <- readline('Please specify row number(s) in comma separated format (enter 0 to auto-select non-duplicates): ')
+      row <- eval(parse(text=paste0('c(',row,')')))    
+      if (row == 0) {
+        opt_ids <- opt_ids$id[!duplicated(opt_ids$displayName)]  
+      }
+      else {
+        opt_ids <- opt_ids$id[row]
+      }
+    }
+    opt_ids <- lapply(opt_ids, function(x) list('id' = x))
+    
+    
+    optSet_name <- optSet[1,1]
+    
+    if (optSet_name %in% optionSets$displayName) {
+      # check if there's already an option set with this name
+      # decide what to do about it.
+      cat('Option Set with name', optSet_name, 'already exists!\n')
+      existing_id <- optionSets$id[optionSets$displayName == optSet_name]
+      info <- getDHIS2_objectChildren(existing_id, 'optionSets', usr, pwd, url)
+      print(info)
+      decision <- confirmAction('Use existing optionSet? (Y/N) ')
+      
+      if (decision == "N") {
+        resp <- "N"
+        while (resp == "N") {
+          rename <- readline('Please enter a new name: ')
+          cat("New name:", rename,'\n')
+          resp <- confirmAction("Is this correct? ")
+        }
+        new_os <- postDHIS2_metaData(createDHIS2_optionSet(resp, opt_ids))
+        optionSets_created <- append(optionSets_created, list(new_os))
+        
+        # now we'll just take the id out of the response
+        new_os <- new_os$response$lastImported
+      }
+      else {
+        # use the current one if no replacement
+        new_os <- existing_id
+      }
+    }
+    else {
+      new_os <- postDHIS2_metaData(createDHIS2_optionSet(optSet[1,1], opt_ids))
+      optionSets_created <- append(optionSets_created, list(new_os))
+      new_os <- new_os$response$lastImported
+    }
+    # last thing, let's start filling in the ids now in the other places of the 
+    # config
+    tracker_config$trackedEntityAttributes$optionSet[tracker_config$trackedEntityAttributes$optionSet == optSet_name] <- new_os
+    tracker_config$programStageDataElements$Option.Set[tracker_config$programStageDataElements$Option.Set == optSet_name] <- new_os
+
+  }
+  
+  # Now let's check the attributes 
+  teiAttributes <- getDHIS2_Resource('trackedEntityAttributes', usr, pwd, url)
+  teiAtt_created <- list()
+  for (i in 1:nrow(tracker_config$trackedEntityAttributes)) {
+    att <- tracker_config$trackedEntityAttributes[i,]
+    att_name <- att$name
+    if (att$name %in% teiAttributes$displayName) {
+      # check if there's already an attribute with this name
+      # decide what to do about it.
+      cat('Attribute with name', att_name, 'already exists!\n')
+      existing_id <- teiAttributes$id[teiAttributes$displayName == att_name]
+      info <- getDHIS2_objectChildren(existing_id, 'trackedEntityAttributes', usr, pwd, url)
+      print(info)
+      decision <- confirmAction('Use existing attribute? (Y/N) ')
+      
+      if (decision == "N") {
+        resp <- "N"
+        while (resp == "N") {
+          rename <- readline('Please enter a new name: ')
+          cat("New name:", rename,'\n')
+          resp <- confirmAction("Is this correct? ")
+        }
+        new_att <- postDHIS2_metaData(createDHIS2_trackedEntityAttribute(resp, att$shortName, att$aggregationType,
+                                                                        att$valueType, att$optionSet))
+        optionSets_created <- append(teiAtt_created, list(new_att))
+        
+        # now we'll just take the id out of the response
+        new_att <- new_att$response$lastImported
+      }
+      else {
+        # use the current one if no replacement
+        new_att <- existing_id
+      }
+    }
+    else {
+      new_att <- postDHIS2_metaData(createDHIS2_trackedEntityAttribute(att_name, att$shortName, att$aggregationType,
+                                                                       att$valueType, att$optionSet))
+      optionSets_created <- append(optionSets_created, list(new_att))
+      new_att <- new_att$response$lastImported
+    }
+    
+    # fill in the program ids    
+    replace <- which(tracker_config$programs == att_name, T)
+    for (j in 1:nrow(replace)) {
+      tracker_config$programs[replace[j,'row'], replace[j,'col']] <- new_att
+    }
+  }
+  
+  # now create the program. it will be assumed that the sheet is used for one program at a time.
+  programs <- getDHIS2_Resource('programs', usr, pwd, url)
+  
+  if (nrow(tracker_config$programs) > 1) {stop('This is only intended to configure one program at a time!')}
+  
+  prog <- tracker_config$programs[1,]
+  prog_name <- prog$name
+
+  
+  check <- checkDHIS2_objectExists(prog_name, 'programs', usr, pwd, url)
+  if (check$exist == T) {
+    if (check$use_existing == "Y") {
+      prog_id <- check$existing_id
+    }
+    else {
+      prog_resp <- postDHIS2_metaData(createDHIS2_program(check$new_name,prog$shortName,prog$description, prog$trackedEntity, prog$attributes))      
+    }
+  }
   
   
 }
+
+
 
 scrapeDHIS2_trackerConfigFile <- function(filename) {
   # Going to write this one with openxlsx
@@ -390,4 +534,51 @@ scrapeDHIS2_trackerConfigFile <- function(filename) {
   return(config)
 
 }
+
+checkDHIS2_objectExists <- function(name, obj_type, usr, pwd, url) {
+  # To be used for config uploads.  Check if an object name exists
+  # in the current configuration. Display relevant info about it
+  # and prompt to use same or replace.
+  existing_objs <- getDHIS2_Resource(obj_type, usr, pwd, url)
+  check <- list('name' = name, 'exists' = F, 'use_existing' = NA,
+                'new_name' = NA, 'existing_id' = NA)
+  
+  if (name %in% existing_objs$displayName) {
+    check$exists <- T
+    # check if there's already an ob with this name
+    # decide what to do about it.
+    cat('Object with name', name, 'already exists!\n')
+    existing_id <- existing_objs$id[existing_objs$displayName == name]
+    check$existing_id <- existing_id
+    info <- getDHIS2_objectChildren(existing_id, obj_type, usr, pwd, url)
+    print(info)
+    decision <- confirmAction('Use existing object? (Y/N) ')
+    check$use_existing <- decision
+    if (decision == "N") {
+      resp <- "N"
+      while (resp == "N") {
+        rename <- readline('Please enter a new name: ')
+        cat("New name:", rename,'\n')
+        resp <- confirmAction("Is this correct? ")
+      }
+      check$new_name <- rename
+    }
+  }
+
+  return(check)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

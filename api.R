@@ -10,7 +10,7 @@ library(foreach)
 
 
 ## GET ------------------------------------------------------------------------------------
-getDHIS2_dataSet <- function(dataSet, orgUnit, start, end, usr, pwd, children="true", url='https://zl-dsp.pih.org/api/', type='json') {
+getDHIS2_dataSet <- function(dataSet, orgUnit, start, end, usr, pwd, children="true", url, type='json') {
   # download the requested data set
   # lookup the data set and org unit
   dataSet_table <- getDHIS2_Resource('dataSets', usr, pwd, url)
@@ -38,7 +38,7 @@ getDHIS2_dataSet <- function(dataSet, orgUnit, start, end, usr, pwd, children="t
 
 }
 
-getDHIS2_Resource <- function(resourceName, usr, pwd, url = 'https://zl-dsp.pih.org/api/') {
+getDHIS2_Resource <- function(resourceName, usr, pwd, url) {
   # creates the appropriate url from which to fetch information
   
   resource <- getDHIS2_Request(usr, pwd, url= paste0(url, resourceName))
@@ -124,7 +124,10 @@ getDHIS2_objectChildren <- function(obj_id, obj_type, usr, pwd, url) {
   
   map <- list('dataElements' = 'categoryCombo',
               'categoryCombos' = 'categories',
-              'categories' = 'options')
+              'categories' = 'categoryOptions',
+              'optionSets' = 'options',
+              'trackedEntityAttributes' = 'optionSet',
+              'programs' = 'trackedEntityAttributes')
   # look up the parent data
   parent_data <- content(getDHIS2_elementInfo(obj_id, obj_type, usr, pwd, url))
   child_type <- map[[obj_type]]
@@ -144,7 +147,7 @@ getDHIS2_objectChildren <- function(obj_id, obj_type, usr, pwd, url) {
   return(list('parent' = parent_name, 'children' = child_names))
 }
 
-getDHIS2_translationValues <- function(obj_id, target_lang, usr, pwd, url='https://zl-dsp.pih.org/api/') {
+getDHIS2_translationValues <- function(obj_id, target_lang, usr, pwd, url) {
   # given a specific object id, return all of the associated translations with that object for the target language
   response <- queryDHIS2(paste0(obj_id,"&filter=locale:eq:",target_lang), 'objectId', 'translations', usr, pwd, url)
   # convert the values into a table
@@ -154,7 +157,7 @@ getDHIS2_translationValues <- function(obj_id, target_lang, usr, pwd, url='https
 }
 
 # PUT ----------------------------------------------------------------------------------------
-putDHIS2_metaData <- function(upload, usr, pwd, url='https://zl-dsp.pih.org/api/', verbose=T) {
+putDHIS2_metaData <- function(upload, usr, pwd, url, verbose=T) {
   # put meta data to DHIS2 instance.  this is for updating existing objects
   # you must already have the appropriate href. this will update the object in 
   # it's entirety.
@@ -168,7 +171,7 @@ putDHIS2_metaData <- function(upload, usr, pwd, url='https://zl-dsp.pih.org/api/
 }
 
 # PUT ----------------------------------------------------------------------------------------
-patchDHIS2_metaData <- function(upload, usr, pwd, url='https://zl-dsp.pih.org/api/', verbose=T) {
+patchDHIS2_metaData <- function(upload, usr, pwd, url, verbose=T) {
   # patch meta data to DHIS2 instance.  this is for updating existing objects
   # you must already have the appropriate href.  this will update only the named
   # elements sent in the payload. 
@@ -182,7 +185,7 @@ patchDHIS2_metaData <- function(upload, usr, pwd, url='https://zl-dsp.pih.org/ap
 }
 
 # POST ---------------------------------------------------------------------------------------
-postDHIS2_metaData <- function(obj, usr, pwd, url='https://zl-dsp.pih.org/api/', type='dataElements', verbose=T) {
+postDHIS2_metaData <- function(obj, usr, pwd, url, type='dataElements', verbose=T) {
   # post meta data to DHIS2 instance
   # find the correct resource link
 
@@ -354,7 +357,7 @@ deleteDHIS2_Values <- function(df, splitBy, usr, pwd, url="https://zl-dsp.pih.or
 
 # QUERY ----------------------------------------------------------------------------
 
-queryDHIS2 <- function(term, term_type, obj_type, usr, pwd, url='https://zl-dsp.pih.org/api/') {
+queryDHIS2 <- function(term, term_type, obj_type, usr, pwd, url) {
   # Query the DHIS2 system with a 'term' that matches a certain attribute of the obj_type that you are looking
   # for.  An example would be term='SF-ANC- Abortions', term_type= 'name', obj_type='dataElements'
   

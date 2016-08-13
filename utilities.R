@@ -161,6 +161,15 @@ confirmAction <- function(message) {
   return(resp)
 }
 
+promptResponse <- function(message, valid_responses) {
+  # prompt for any type of response and check that answer is acceptable
+  resp <- readline(message)
+  while (!(resp %in% valid_responses)){
+    resp <- readline('Invalid response. Please re-enter response.')
+  }
+  return(resp)
+}
+
 promptNumber <- function(message, min, max) {
   # prompt for a response with a value of a number
   # check that number fits within bounds of min and max

@@ -135,15 +135,14 @@ createDHIS2_programStage <- function(name, programId, dataElements = NA, other_p
                                      
 
 createDHIS2_trackedEntityAttribute <- function(name, shortName=NA, aggregationType = 'SUM', 
-                                               valueType = 'INTEGER', optionSetValue = 'FALSE',
-                                               optionSetId = NA, other_properties=list()) {
+                                               valueType = 'INTEGER', optionSetId = NA, other_properties=list()) {
   # create a trackedEntityAttribute for use with Tracker programs
   if (is.na(shortName)) {shortName <- name} # make sure we have something for short name to post
   
-  payload <- list('name' = name, 'shortName' = shortName, 
-                  'valueType' = valueType, 'optionSetValue' = optionSetValue)
+  payload <- list('name' = name, 'shortName' = shortName, 'valueType' = valueType)
   
-  if (optionSetValue == "TRUE") {payload <- append(payload, list('optionSet' = list('id' = optionSetId)))}
+  if (!is.na(optionSetId)) {payload <- append(payload, list('optionSetValue' = 'TRUE', 'optionSet' = list('id' = optionSetId)))}
+  else {payload <- append(payload, list('optionSetValue' = 'FALSE'))}
   
   payload <- append(payload, other_properties)
   
@@ -153,7 +152,7 @@ createDHIS2_trackedEntityAttribute <- function(name, shortName=NA, aggregationTy
 
 createDHIS2_optionSet <- function(name, option_ids = list()) {
   # Make an option set for use with Tracker programs
-  return(list('name' = name, 'options' = list(option_ids)))
+  return(list('name' = name, 'options' = option_ids))
 }
 
 createDHIS2_option <- function(name, code) {

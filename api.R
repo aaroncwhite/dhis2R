@@ -38,10 +38,10 @@ getDHIS2_dataSet <- function(dataSet, orgUnit, start, end, usr, pwd, children="t
 
 }
 
-getDHIS2_Resource <- function(resourceName, usr, pwd, url) {
+getDHIS2_Resource <- function(resourceName, usr, pwd, url, add_props=c()) {
   # creates the appropriate url from which to fetch information
   
-  resource <- getDHIS2_Request(usr, pwd, url= paste0(url, resourceName))
+  resource <- getDHIS2_Request(usr, pwd, url= paste0(url, resourceName), add_props = add_props)
   
   
   return(resource)
@@ -49,13 +49,15 @@ getDHIS2_Resource <- function(resourceName, usr, pwd, url) {
 
 
 
-getDHIS2_Request <- function(usr, pwd, url, add_props=c('formName')) {
+getDHIS2_Request <- function(usr, pwd, url, add_props=c()) {
   ## This will take a specific api url for dataElements or categoryOptions, etc
   ## and return a table with all information available.
   ## This only works well for the main resource tables.  Specific data element
   ## or category information is nested, so it's not as well suited. 
   
-  url <- paste0(url, '.json?fields=displayName,id,shortName,code,', paste(add_props, collapse=","), '&paging=false') # we dont' want to page the file
+  if (length(add_props)>0) {add_props <- paste0(",",add_props, collapse='')}
+  
+  url <- paste0(url, '.json?fields=displayName,id,shortName,code',add_props, '&paging=false') # we dont' want to page the file
   req <- GET(url, authenticate(usr, pwd, type='basic')) # hit the server
   req_content <- content(req)[[1]] # take the response data from the info we got back from the server
   
@@ -75,7 +77,7 @@ getDHIS2_Request <- function(usr, pwd, url, add_props=c('formName')) {
         output[i,names(row)[e]] <-  row[e] # 'unlist' it, so it's just a vector of values and stick it into that row
       }
     }  
-    names(output) <- names(req_content[[1]]) # give it the names from the server
+    # names(output) <- names(req_content[[1]]) # give it the names from the server
     
   }
 

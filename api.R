@@ -15,9 +15,11 @@ getDHIS2_dataSet <- function(dataSet, orgUnit, start, end, usr, pwd, children="t
   # lookup the data set and org unit
   dataSet_table <- getDHIS2_Resource('dataSets', usr, pwd, url)
   dataSet <- dataSet_table$id[dataSet_table$displayName == dataSet]
+  if (length(dataSet) == 0) {stop('Check dataSet name')}
   
   orgUnit_table <- getDHIS2_Resource('organisationUnits', usr, pwd, url)
   orgUnit <- orgUnit_table$id[orgUnit_table$displayName == orgUnit]
+  if (length(orgUnit) ==0) {stop('Check orgUnit name')}
   
   # build the url
   url <- paste0(url, 'dataValueSets.',type,'?dataSet=',dataSet,'&orgUnit=',orgUnit,'&startDate=',start, '&endDate=',end,'&children=',children)
@@ -84,10 +86,10 @@ getDHIS2_Request <- function(usr, pwd, url, add_props=c()) {
   return(output)
 }
 
-getDHIS2_ResourceTable <- function(usr, pwd, url = 'https://zl-dsp.pih.org/') {
+getDHIS2_ResourceTable <- function(usr, pwd, url) {
   # search for a specific resource type (data element, category option, etc)
   # return url for further parsing
-  url <- paste0(url, 'api/?paging=false')
+#   url <- paste0(url, 'api/?paging=false')
   req <- GET(url,
              authenticate(usr,pwd, type='basic')
   )
@@ -198,7 +200,7 @@ postDHIS2_metaData <- function(obj, usr, pwd, url, type='dataElements', verbose=
     
 }
 
-postDHIS2_Values <- function(df, splitBy, usr, pwd, url="https://zl-dsp.pih.org/api/", type='dataValueSets') {
+postDHIS2_Values <- function(df, splitBy, usr, pwd, url, type='dataValueSets') {
   if (nrow(df) < splitBy) {
     split <- cbind(1, nrow(df))
   }
@@ -232,7 +234,7 @@ postDHIS2_Values <- function(df, splitBy, usr, pwd, url="https://zl-dsp.pih.org/
 }
 
 # DELETE --------------------------------------------------------------------------------------
-deleteDHIS2_objects <- function(obj_names=NA, ids=NA, obj_types, usr, pwd, url= 'https://zl-dsp.pih.org/api/', prompt=T) {
+deleteDHIS2_objects <- function(obj_names=NA, ids=NA, obj_types, usr, pwd, url, prompt=T, prune=F) {
   # takes a vector of named objects to search for and then posts delete api calls
   # first download the appropriate table.  If you pass a vector of strs in obj_names
   # function will look for matches.  if you pass ids, it will just find the matches without
@@ -287,20 +289,40 @@ deleteDHIS2_objects <- function(obj_names=NA, ids=NA, obj_types, usr, pwd, url= 
     }
     else {resp <- "Y"}
     
+  
+    
+    
     if (resp == "Y") {
+
+      
+      
       obj_table$status <- NA
       obj_table$message <- NA
       resp <- NULL
       reqs <- list()
+      pruned <- list()
       # send the delete request for each stated object
       for (i in 1:nrow(obj_table)) {
         cat('\r Deleting:', obj_table$displayName[i], 'Status:')
+        
+        # if prune == T, remove any value audits or anything that might get in the way 
+        # of deleting the object
+        
+#         if (prune == T) {
+# #             resp <- POST(paste0(url, 'maintenance/dataPruning/', obj_type,"/", obj_table$id[i]), authenticate(usr, pwd, type='basic'))
+#             POST(paste0(url, 'maintenance/dataElements/DtyGiExGSgj'), authenticate(usr, pwd, type='basic'))
+#             
+#             pruned <- append(pruned, resp)
+#         }
+        
         req <- DELETE(as.character(paste0(url,obj_type,"/",obj_table$id[i])), authenticate(usr, pwd, type = 'basic'))
         obj_table$status[i] <- req$status_code
-        cat(req$status_code, "\t\t\t\t\t\t\t\t\t")
+        cat(req$status_code) # print the status code and then clear the line
         req <- list(req)
         names(req) <- obj_table$displayName[i]
         reqs <- append(reqs, req)
+        cat(rep('\r ', 150))
+        flush.console()
       }
       cat('\n')
       obj_table$obj_type <- obj_type
@@ -322,7 +344,7 @@ deleteDHIS2_objects <- function(obj_names=NA, ids=NA, obj_types, usr, pwd, url= 
   
 }
 
-deleteDHIS2_Values <- function(df, splitBy, usr, pwd, url="https://zl-dsp.pih.org/api/", type='dataValues') {
+deleteDHIS2_Values <- function(df, splitBy, usr, pwd, url, type='dataValues') {
   # With the upgrade to 2.22, we can now use a delete strategy using a POST call to the system.  this makes 
   # it much easier to delete data.  Column names should match the json style (camel case).
   # must at least have dataElement, period, orgUnit, attributeOptionCombo, categoryOptionCombo, and value
@@ -336,12 +358,12 @@ deleteDHIS2_Values <- function(df, splitBy, usr, pwd, url="https://zl-dsp.pih.or
   results <- data.frame(matrix(nrow=0, ncol=4))
   conflicts <- list()
   
-  url <- paste0(url, type)
+  url <- paste0(url, 'dataValueSets')
   for (i in 1:nrow(split)) {
     cat('\rSegment:', i, 'of', nrow(split))
     payload <- list( df[split[i,1]:split[i,2],])
     names(payload) <- type
-    req <- POST(paste0(url,'?importStrategy=DELETE'),authenticate(usr, pwd), body= , encode='json')
+    req <- POST(paste0(url,'?importStrategy=DELETE'),authenticate(usr, pwd), body= payload, encode='json')
     results <- rbind(results, unlist(content(req)$importCount))
     cat('\tStatus:', content(req)$description)
     if ("conflicts" %in% names(content(req))) {

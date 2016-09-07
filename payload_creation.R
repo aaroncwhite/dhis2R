@@ -160,8 +160,27 @@ createDHIS2_option <- function(name, code) {
   return(list('name' = name, 'code' = code))
 }
 
+# USERS -----------------------------------------------------------------------------------
+createDHIS2_user <- function(firstName, surname, username, password, userRoles, organisationUnits, add_props=list()) {
+  # Create a dhis2 user object for upload, required properties must be stated, additional properties/attributes
+  # can be declared with add_props
+  
+  
+  user <- list('firstName' = firstName,
+               'surname' = surname,
+               'userCredentials' = list('username' = username, 
+                                        'password' = password,
+                                        'userRoles' = lapply(userRoles, function(a) list('name' = a))),
+               'organisationUnits' = lapply(organisationUnits, function(a) list('name' = a))
+  )
+  
+  user <- append(user, add_props)
+  
+  return(user)
+               
+}
 
-list('name' = 'test.os', 'options' = list('id' = 'QAk7ntzcexa'))
+
 # TRANSLATIONS ----------------------------------------------------------------------------
 createDHIS2_translation <- function(value, property, locale, obj_id, className) {
   upload <- list('className'=className, 

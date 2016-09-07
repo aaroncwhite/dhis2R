@@ -304,6 +304,11 @@ uploadDHIS2_metaData <- function(obj, obj_type, usr, pwd, url,overwrite=F, promp
                      'translations' = ({
                        trans <- obj[cc,]
                        createDHIS2_translation(trans$value, trans$property, trans$locale, trans$objectId, trans$className)
+                     }),
+                     'users' = ({
+                       user <- obj[cc,]
+                       createDHIS2_user(user$firstName, user$surname, user$username, user$password, user$userRole, user$organisationUnit)
+                       
                      })
     )
     

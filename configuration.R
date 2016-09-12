@@ -341,7 +341,7 @@ uploadDHIS2_metaData <- function(obj, obj_type, usr, pwd, url,overwrite=F, promp
     }
     else if (upload$name %in% existingObjects$displayName == FALSE) {
       # any categories that DO NOT exist at all will always be uploaded
-      resp <- content(postDHIS2_metaData(upload, usr, pwd, url, type=obj_type, verbose=verbose))
+      resp <- content(postDHIS2_metaData(upload, usr, pwd, url, type=obj_type, verbose=verbose), type = 'application/json')
       req$uploaded %<>% append(., list(list('name' = upload$name, 'response' = list(resp))))
     }
     else {

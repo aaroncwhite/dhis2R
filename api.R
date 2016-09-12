@@ -131,7 +131,8 @@ getDHIS2_objectChildren <- function(obj_id, obj_type, usr, pwd, url) {
               'categories' = 'categoryOptions',
               'optionSets' = 'options',
               'trackedEntityAttributes' = 'optionSet',
-              'programs' = 'trackedEntityAttributes')
+              'programs' = 'trackedEntityAttributes',
+              'users' = 'userRoles')
   # look up the parent data
   parent_data <- content(getDHIS2_elementInfo(obj_id, obj_type, usr, pwd, url))
   child_type <- map[[obj_type]]

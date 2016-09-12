@@ -142,10 +142,11 @@ getDHIS2_objectChildren <- function(obj_id, obj_type, usr, pwd, url) {
   if (stri_sub(child_type, -1) != 's') {child_type <- paste0(child_type,'s')}
   
   # look up the child name
-  child_names <- unlist(lapply(child_id, function(x) content(getDHIS2_elementInfo(x, child_type, usr, pwd, url))$displayName))
-  if (!is.null(child_names)) {
-    names(child_names) <- rep(child_type, length(child_names))
-  }
+  child_names <- lapply(child_id, function(x) content(getDHIS2_elementInfo(x, child_type, usr, pwd, url))[c('displayName', 'id')])
+  child_names <- list_to_df(lapply(child_names, function(x) as.data.frame(t(unlist(x))))) %>% all_character()
+#   if (!is.null(child_names)) {
+#     names(child_names) <- rep(child_type, length(child_names))
+#   }
   parent_name <- parent_data$displayName
   names(parent_name) <- obj_type
   

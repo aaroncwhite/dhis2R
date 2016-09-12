@@ -166,7 +166,8 @@ createDHIS2_user <- function(firstName, surname, username, password, userRoles, 
   # can be declared with add_props
   
   
-  user <- list('firstName' = firstName,
+  user <- list('name' = paste(firstName, surname),
+               'firstName' = firstName,
                'surname' = surname,
                'userCredentials' = list('username' = username, 
                                         'password' = password,
@@ -178,6 +179,18 @@ createDHIS2_user <- function(firstName, surname, username, password, userRoles, 
   
   return(user)
                
+}
+
+# FORMS -----------------------------------------------------------------------------------
+createDHIS2_report <- function(name, content, type='HTML',
+                               reportParams = list('paramReportingPeriod' = "true", 
+                                                   'paramOrganisationUnit' = "true"),
+                               relativePeriods = list('lastMonth' = 'true', 'thisMonth' = "true")) {
+  # return a payload ready to send to dhis2 for a report. lazy loading most of the defaults
+  # since our reports will most likely be monthly
+  payload <- list('name' = name, 'designContent' = content,'type' = type, 'reportParams' = reportParams,
+                  'relativePeriods' = relativePeriods)
+  return(payload)
 }
 
 

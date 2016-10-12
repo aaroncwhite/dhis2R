@@ -98,7 +98,7 @@ removeDHIS2_configFile <- function(filename, usr, pwd, url, de=T, catCombo=T, ca
       catComboErrors <- c()
       sub_results <- list()
       for (cc_id in catCombo_ids) {
-        catCombo <- content(getDHIS2_elementInfo(cc_id, 'categoryCombos', usr, pwd, url))
+        catCombo <- getDHIS2_elementInfo(cc_id, 'categoryCombos', usr, pwd, url)
         if (!is.null(names(catCombo))) {
           catOptCombos_ids <- unlist(catCombo$categoryOptionCombos)
           if (length(catOptCombos_ids) > 0) {
@@ -155,10 +155,10 @@ scrapeDHIS2_configFile <- function(filename) {
   # Config Uploaded in 1.34 minutes
   startTime <- Sys.time()
   
-  wb <- loadWorkbook(filename)
+  wb <- XLConnect::loadWorkbook(filename)
   
   # Load all of the options we're working with
-  catOptions <- readWorksheet(wb, 'Category Options')
+  catOptions <- XLConnect::readWorksheet(wb, 'Category Options')
   
   # CREATE OPTIONS -----------------------------------------------------------
   # take just the options listed, remove na values, and duplicates to just
@@ -167,7 +167,7 @@ scrapeDHIS2_configFile <- function(filename) {
   names(options) <- 'options'
   
   # CREATE CATEGORIES --------------------------------------------------------
-  dataElements <- readWorksheet(wb, "Data Elements")
+  dataElements <- XLConnect::readWorksheet(wb, "Data Elements")
   columns <- c(findColumn_index('Data.Element.Name', dataElements, "Can't determine column with DATA ELEMENT name!", 'Please specify data element column number: '),
                findColumn_index('Short.Name', dataElements, "Can't determine column with SHORT NAME!", 'Please specify short name column number: '),
                findColumn_index('Code', dataElements, "Can't determine column with SHORT NAME!", 'Please specify short name column number: '),
@@ -195,7 +195,7 @@ scrapeDHIS2_configFile <- function(filename) {
   
   # DATA ELEMENT GROUP
   # import the dataElementGroup names
-  dataElementGroups <- readWorksheet(wb, 'Data Element Groups')
+  dataElementGroups <- XLConnect::readWorksheet(wb, 'Data Element Groups')
   names(dataElementGroups) <- c('name', 'shortName', 'aggregationType')
   # now find the matching dataElements from that page
   for (deg in dataElementGroups$name[!is.na(dataElementGroups$name)]) {
@@ -208,7 +208,7 @@ scrapeDHIS2_configFile <- function(filename) {
   
   # DATA SETS ---------------------------------------------------------------------
   # this one is going to be slightly different as we need information on two pages
-  dataSets <- readWorksheet(wb, 'Dataset')
+  dataSets <- XLConnect::readWorksheet(wb, 'Dataset')
   for (ds in dataSets$Dataset.Name[!is.na(dataSets$Dataset.Name)]) {
     de <- dataElements$dataElement[dataElements$dataSet == ds]
     dataSets$dataElements[dataSets$Dataset.Name == ds] <- list(de[!is.na(de)])
@@ -216,14 +216,13 @@ scrapeDHIS2_configFile <- function(filename) {
   names(dataSets) <- c('dataSet', 'frequency', 'ou_level', 'attribute', 'catCombo', 'dataElements')
   
   # USER ROLES -------------------------------------------------------------------
-  # userRoles <- readWorksheet(wb, 'User Roles')
+  # userRoles <- XLConnect::readWorksheet(wb, 'User Roles')
 
   # USER INVITATION --------------------------------------------------------------
   
   
-  config <- list('dataElements' = dataElements, 'dataElementGroups' = dataElementGroups,
-                 'categoryCombos' = catCombos, 'categories'= catOptions, 
-                 'categoryOptions' = options, 'dataSets' = dataSets)
+  config <- list('categoryOptions' = options, 'categories'= catOptions, 'categoryCombos' = catCombos,
+                 'dataElements' = dataElements, 'dataElementGroups' = dataElementGroups, 'dataSets' = dataSets)
   
   cat("----- Scrape Completed -----\n")
   print(Sys.time() - startTime)
@@ -243,7 +242,7 @@ cloneDHIS2_userRole <- function(id, usr, pwd, url, new_name) {
   # useful for copying exact priviliges and permissions
   # This ignores dataset associations or current user associations. 
   
-  payload <- content(getDHIS2_elementInfo(id, 'userRoles', usr, pwd, url))
+  payload <- getDHIS2_elementInfo(id, 'userRoles', usr, pwd, url)
   
   payload <- payload[!(names(payload) %in% c('users','id','href', 'created', 'lastUpdated','dataSets'))]
   
@@ -281,8 +280,14 @@ uploadDHIS2_metaData <- function(obj, obj_type, usr, pwd, url,overwrite=F, promp
                      'categoryCombos' = ({
                        catCombo <- obj[cc,] # the row we're looking at
                        cat_name <- catCombo[1,1] # the first column is the name
-                       cats <- catCombo[-1] %>% .[!is.na(.)] %>% .[!duplicated(.)] # remove the name column and any NA columns, for good measure, remove dupes
-                       createDHIS2_CategoryCombo(cat_name, cats, shortName = cat_name) # make the 
+                       if (cat_name != 'default') {
+                         cats <- catCombo[-1] %>% .[!is.na(.)] %>% .[!duplicated(.)] # remove the name column and any NA columns, for good measure, remove dupes
+                         createDHIS2_CategoryCombo(cat_name, cats, shortName = cat_name) # make the 
+                       }
+                       else {
+                         list('name' = 'default')
+                       }
+
                      }),
                      'categories' = ({ # this follows the same format as above
                        category <- obj[cc,]
@@ -366,6 +371,55 @@ uploadDHIS2_metaData <- function(obj, obj_type, usr, pwd, url,overwrite=F, promp
   
 }
 
+# ORGANISATION UNIT HIERARCHY
+uploadDHIS2_orgUnitHierarchy <- function(file, usr, pwd, url) {
+  # Scrape the config file for org unit related objects
+  # this is going to be treated separately since creating the 
+  # org units and relationships will require some back and forth 
+  # with the api and won't work exactly like the aggregate upload
+  # process
+  worksheets <- c('organisationUnits', 'organisationUnitGroupSets', 'organisationUnitLevels') # these obviously have to match
+  orgUnit_data <- lapply(worksheets, function(x) all_character(readWorkbook(file, x)))
+  names(orgUnit_data) <- worksheets
+  
+  # create in this order: org units, groups, group sets, levels
+  
+  # org units first
+  current_orgUnits <- getDHIS2_Resource('organisationUnits', usr, pwd, url)
+  new_orgUnits <- orgUnit_data$organisationUnits
+  if (any(current_orgUnits$displayName %in% new_orgUnits$name) == T) {
+    warning('Existing organisation units in configuration file.  They will be skipped.')
+    new_orgUnits <- new_orgUnits[!(new_orgUnits$name %in% current_orgUnits$displayName),]
+  }
+  
+  # fill in parent ids if we have them
+  current_ids <- current_orgUnits$id 
+  names(current_ids) <- current_orgUnits$displayName
+  new_orgUnits$parent <- revalue(new_orgUnits$parent, current_ids)
+  
+  for (ou in 1:nrow(new_orgUnits)) {
+    # we're going to upload each record and then update our list as we go
+    
+  }
+  
+  
+  createDHIS2_OrgUnit()
+  
+  responses <- list()
+  for (l in 1:nrow(orgUnit_data$organisationUnitLevels)) {
+    payload <- list('name' = orgUnit_data$organisationUnitLevels$name[l], 'level' = orgUnit_data$organisationUnitLevels$levels[l])
+    resp <- postDHIS2_metaData(payload, usr, pwd, url, 'organisationUnitLevels')
+    reponses[['levels']] %<>% append(., list(resp))
+  }
+  
+  # o
+  
+  # groups 
+  
+  
+  
+}
+uploadDHIS2_orgHierarchy <- function()
 
 # TRACKER SPECIFIC FUNCTIONS -----------------------------------------------------------------------
 uploadDHIS2_trackerConfig <- function(tracker_config, usr, pwd, url) {

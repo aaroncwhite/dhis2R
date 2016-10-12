@@ -10,7 +10,7 @@ library(foreach)
 
 
 ## GET ------------------------------------------------------------------------------------
-getDHIS2_dataSet <- function(dataSet, orgUnit, start, end, usr, pwd, children="true", url, type='json') {
+getDHIS2_dataSet <- function(dataSet, orgUnit, start, end, usr, pwd, children="true", url, type='csv') {
   # download the requested data set
   # lookup the data set and org unit
   dataSet_table <- getDHIS2_Resource('dataSets', usr, pwd, url)
@@ -106,13 +106,18 @@ getDHIS2_ResourceTable <- function(usr, pwd, url) {
   return(rsrcs[order(rsrcs$plural),])
 }
 
-getDHIS2_elementInfo <- function(id, type, usr, pwd, url) {
+getDHIS2_elementInfo <- function(id, type, usr, pwd, url, content=T) {
   # uses the urls from get Resource table and resource to pull further information
   # use to pull data element info on combo options, etc
   # type and id must be exact
   
-  req <- GET(paste0(url,"/", type,"/", id), authenticate(usr, pwd, type='basic'))
-  return(req)
+  req <- GET(paste0(url, type,"/", id), authenticate(usr, pwd, type='basic'))
+  if (req$status_code == 200 & content==T) {
+    return(content(req))
+  }
+  else {
+    return(req)
+  }
 }
 
 getDHIS2_objectChildren <- function(obj_id, obj_type, usr, pwd, url) {
@@ -134,7 +139,7 @@ getDHIS2_objectChildren <- function(obj_id, obj_type, usr, pwd, url) {
               'programs' = 'trackedEntityAttributes',
               'users' = 'userRoles')
   # look up the parent data
-  parent_data <- content(getDHIS2_elementInfo(obj_id, obj_type, usr, pwd, url))
+  parent_data <- getDHIS2_elementInfo(obj_id, obj_type, usr, pwd, url)
   child_type <- map[[obj_type]]
   child_id <- unlist(parent_data[[child_type]])
   
@@ -142,7 +147,7 @@ getDHIS2_objectChildren <- function(obj_id, obj_type, usr, pwd, url) {
   if (stri_sub(child_type, -1) != 's') {child_type <- paste0(child_type,'s')}
   
   # look up the child name
-  child_names <- lapply(child_id, function(x) content(getDHIS2_elementInfo(x, child_type, usr, pwd, url))[c('displayName', 'id')])
+  child_names <- lapply(child_id, function(x) getDHIS2_elementInfo(x, child_type, usr, pwd, url)[c('displayName', 'id')])
   child_names <- list_to_df(lapply(child_names, function(x) as.data.frame(t(unlist(x))))) %>% all_character()
 #   if (!is.null(child_names)) {
 #     names(child_names) <- rep(child_type, length(child_names))
@@ -233,6 +238,14 @@ postDHIS2_Values <- function(df, splitBy, usr, pwd, url, type='dataValueSets') {
   names(results) <- names(unlist(content(req)$importCount))
   print(colSums(results))
   return(list('results' = results, 'chunks' = chunks))
+}
+
+postDHIS2_fileResource <- function(file, usr, pwd, url) {
+  # post a file resource to dhis2 for use later
+  # returns structured json response from dhis2
+  file <- 
+  resp <- POST(paste0(url.loc, 'fileResources'), body= upload_file(system.file(file)), 
+               authenticate(usr.loc, pwd.loc))
 }
 
 # DELETE --------------------------------------------------------------------------------------

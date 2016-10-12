@@ -432,7 +432,7 @@ downloadDHIS2_translations <- function(obj_type, usr, pwd, url='https://zl-dsp.p
 
 downloadDHIS2_translation <- function(obj_id, obj_type, usr, pwd, url='https://zl-dsp.pih.org/api/', new_TR=list('fr'), child_types=NULL) {
   # for an object, download the translations for the main object and any children if designated
-  obj_info <- content(getDHIS2_elementInfo(obj_id, obj_type, usr, pwd, url))
+  obj_info <- content(getDHIS2_elementInfo(content=F, obj_id, obj_type, usr, pwd, url))
   main_translations <- switch(obj_type,
                               'charts' = c('name', 'rangeAxisLabel', 'domainAxisLabel', 'title')
                               
@@ -479,7 +479,7 @@ downloadDHIS2_translation <- function(obj_id, obj_type, usr, pwd, url='https://z
       base_child <- list()
       for (i in ids) {
         child <- append(child, unlist(downloadDHIS2_objectTranslation(i, usr, pwd, url, new_TR)))
-        base_child <- append(base_child, content(getDHIS2_elementInfo(i, 'identifiableObjects', usr, pwd, url))$name)
+        base_child <- append(base_child, content(getDHIS2_elementInfo(content=F, i, 'identifiableObjects', usr, pwd, url))$name)
       }
       
       base_child <- unlist(base_child)

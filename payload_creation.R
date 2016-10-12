@@ -1,7 +1,7 @@
 # AGGREGATE METADATA CREATION ------------------------------------------------------------------------------
-# These functions can be used to create various the various meta data configurations necessary. 
-# Each has a standard default set.  All use the 'name' tag for related objects.  For example, 
-# to create a data element with a category combination you would specify categoryCombo = 'combo name'
+# These functions can be used to c use the 'name' tag for related objects.  For example, 
+# to create a data element with a catereate various the various meta data configurations necessary. 
+# Each has a standard default set.  Allgory combination you would specify categoryCombo = 'combo name'
 # this is easier than trying to find the id of each value. 
 # These functions are NOT for actual uploading, but help create the proper payload format for upload. 
 
@@ -68,23 +68,29 @@ createDHIS2_DataElement <- function(name, shortName = NA, code="", description="
   return(upload)
 }
 
-createDHIS2_CategoryCombo <- function(name, categories=c(), shortName = NA, other_properties=list()) {
+createDHIS2_CategoryCombo <- function(name, categories= NA, shortName = NA, dataDimension= 'DISAGGREGATION',other_properties=list()) {
   # make a list object for upload to DHIS2.  requires a name at least plus options to be combined
   # other properties can be passed using other_properties in named list f
   # returns list for upload using postDHIS2_metaData()
   name <- unname(name, force=T)
   if (is.na(shortName)) {shortName <- name} # make sure we have something for short name to post
-  category_list <- list()
-  for (cat in categories) {
-    category_list <- append(category_list, list(list('name'= cat)))
-  }
+
+
   
-  upload <- list('name' = name, 'shortName'=shortName, 'categories'= category_list)
+  upload <- list('name' = name, 'shortName'=shortName, 'dataDimensionType' = dataDimension)
+  
+  if (!is.na(categories)) {
+    category_list <- list()
+    for (cat in categories) {
+      category_list <- append(category_list, list(list('name'= cat)))
+    }
+    upload <- append(upload, list('categories' = category_list))
+  }
   upload <- append(upload, other_properties)
   return(upload)
 }
 
-createDHIS2_Category <- function(name, options=c(), shortName = NA, other_properties=list()) {
+createDHIS2_Category <- function(name, options=c(), shortName = NA, dataDimension='DISAGGREGATION', other_properties=list()) {
   # make a list object for upload to DHIS2.  requires a name at least plus options to be combined
   # other properties can be passed using other_properties in named list f
   # returns list for upload using postDHIS2_metaData()
@@ -95,16 +101,17 @@ createDHIS2_Category <- function(name, options=c(), shortName = NA, other_proper
     categoryOptions <- append(categoryOptions, list(list('name'= o)))
   }
   
-  upload <- list('name' = name, 'shortName'=shortName, 'categoryOptions'= categoryOptions)
+  upload <- list('name' = name, 'shortName'=shortName, 'categoryOptions'= categoryOptions, 'dataDimensionType' = dataDimension)
   upload <- append(upload, other_properties)
   return(upload)
 }
 
-createDHIS2_CategoryOption <- function(name) {
+createDHIS2_CategoryOption <- function(name, add_props=list()) {
   # returns list for upload using postDHIS2_metaData()
   # this one is pretty simple
-  
-  return(list('name'=name))
+  up <- list('name'=name)
+  up <- append(up, add_props)
+  return(up)
 }
 
 # TRACKER SPECIFIC ------------------------------------------------------------------------
@@ -181,6 +188,20 @@ createDHIS2_user <- function(firstName, surname, username, password, userRoles, 
                
 }
 
+# ORANISATION UNITS -----------------------------------------------------------------------
+createDHIS2_OrgUnit <- function(name, shortName=NA, description='', 
+                                openingDate = Sys.Date(), parentId=NA, add_props=list()) {
+  # Create an organisation unit in dhis2
+  if (is.na(shortName)) {shortName <- substr(name, 1, 49)} # make sure we have something for short name to post
+  
+  up <- list('name' = name, 'shortName' = shortName, 
+             'description' = description, 'openingDate' = openingDate)
+  if (!is.na(parentId)) {up <- append(up, list('parent' = list('id' = parentId)))}
+  up <- append(up, add_props)
+  
+  return(up)
+}
+
 # FORMS -----------------------------------------------------------------------------------
 createDHIS2_report <- function(name, content, type='HTML',
                                reportParams = list('paramReportingPeriod' = "true", 
@@ -233,10 +254,10 @@ prepareDHIS2_dataValues <- function(df, usr, pwd, url="https://zl-dsp.pih.org/ap
   for (de in unique_dataElements) {
     print(de)
     if (de %in% dataElements$displayName) { # make sure the data element exists
-      de_info <- content(getDHIS2_elementInfo(dataElements$id[dataElements$displayName == de], 'dataElements', usr, pwd, url))
+      de_info <- content(getDHIS2_elementInfo(dataElements$id[dataElements$displayName == de], 'dataElements', usr, pwd, url, content=F))
       
       # find the related category combination information
-      catCombo_info <- content(getDHIS2_elementInfo(de_info$categoryCombo$id, 'categoryCombos', usr, pwd, url))
+      catCombo_info <- content(getDHIS2_elementInfo(de_info$categoryCombo$id, 'categoryCombos', usr, pwd, url, content = F))
       catOptionCombo_ids <- unlist(catCombo_info$categoryOptionCombos) # this will return just the ids we want to try to find
       de_optionCombos <- catOptionCombos[catOptionCombos$id %in% catOptionCombo_ids,]
       
@@ -252,29 +273,11 @@ prepareDHIS2_dataValues <- function(df, usr, pwd, url="https://zl-dsp.pih.org/ap
         stated_combos <- unique(sub$categoryOptionCombo[sub$dataElement == de])
         stated_combos <- stated_combos[!is.na(stated_combos)]
         for (opt_combo in stated_combos) {
-          # since some of the orders are different in the system than how we configure the 
-          # excel file, we need to check for matches using each part of the cat option combo.
-          # we'll use greps_and() (see utilities.R) to find the column that matches ALL of the 
-          # parts that we give it
-          print(opt_combo)
-          options <- unlist(strsplit(opt_combo, ", ")) 
-          opt_combo_index <- greps_and(options, de_optionCombos$displayName, ignoreCase = F)
-          if (length(opt_combo_index) > 1) {
-            # if we found more than one it's because there are multiple matches, we'll match 
-            # based on string length
-            opt_combo_index <- which(nchar(de_optionCombos$displayName[opt_combo_index]) == nchar(opt_combo))
-            
-          }
+          # since dhis2 might have created the combination of categories in a 
+          # different order than i typed it, this will attempt to match each individual
+          # option and guess the right one, if not, it will prompt for a choice.
+          opt_combo_index <- matchDHIS2_catOptions(opt_combo, de_optionCombos)
           
-          if (length(opt_combo_index) == 0) {
-            # prompt for correct value if nothing matches
-            cat('Nothing seems to match!\n Available options:\n')
-            current_opts <- de_optionCombos[,'displayName', drop=F]
-            rownames(current_opts) <- 1:nrow(current_opts)
-            print(current_opts)
-            opt_combo_index <- promptNumber('Please select the proper value by entering the row number: ', 1, nrow(current_opts))
-            
-          }
           sub$categoryOptionCombo[sub$categoryOptionCombo == opt_combo & sub$dataElement == de] <- de_optionCombos$id[opt_combo_index]
           
         }
@@ -297,4 +300,30 @@ prepareDHIS2_dataValues <- function(df, usr, pwd, url="https://zl-dsp.pih.org/ap
   
 }
 
+matchDHIS2_catOptions <- function(opt_combo, de_optionCombos) {
 
+  # since some of the orders are different in the system than how we configure the 
+  # excel file, we need to check for matches using each part of the cat option combo.
+  # we'll use greps_and() (see utilities.R) to find the column that matches ALL of the 
+  # parts that we give it
+  print(opt_combo)
+  options <- unlist(strsplit(opt_combo, ", ")) 
+  opt_combo_index <- greps_and(options, de_optionCombos$displayName, ignoreCase = F)
+  if (length(opt_combo_index) > 1) {
+    # if we found more than one it's because there are multiple matches, we'll match 
+    # based on string length
+    opt_combo_index <- which(nchar(de_optionCombos$displayName[opt_combo_index]) == nchar(opt_combo))
+    
+  }
+  
+  if (length(opt_combo_index) == 0) {
+    # prompt for correct value if nothing matches
+    cat('Nothing seems to match!\n Available options:\n')
+    current_opts <- de_optionCombos[,'displayName', drop=F]
+    rownames(current_opts) <- 1:nrow(current_opts)
+    print(current_opts)
+    opt_combo_index <- promptNumber('Please select the proper value by entering the row number: ', 1, nrow(current_opts))
+    
+  }
+  return(opt_combo_index)
+}

@@ -23,7 +23,7 @@ createDHIS2_DataSet <- function(name, shortName = NA, description = "", periodTy
   
   
   upload <- list('name'= name,'shortName'= shortName, 'periodType' = periodType, 'description' = description,
-                 'dataElements' = dataElements, 'timelyDays'= timely)
+                 'dataSetElements' = dataElements, 'timelyDays'= timely)
   # incase we passed any other properties, add them now.
   upload <- append(upload, other_properties)
   

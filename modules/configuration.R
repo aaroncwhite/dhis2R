@@ -1,5 +1,5 @@
 library(XLConnect)
-library(stringi)
+# library(stringi)
 library(magrittr)
 library(plyr)
 library(rlist)

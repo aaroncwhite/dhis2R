@@ -621,9 +621,6 @@ checkDHIS2_objectExists <- function(name, obj_type, usr, pwd, url) {
   return(check)
 }
 
-mirrorDHIS2_config <- function()
-
-
 
 transferDHIS2_data <- function(usr.from, pwd.from, url.from, usr.to, pwd.to, url.to, 
                                parent_ous = NULL, specific_dataSets = NULL, yearly_to_monthly=T,

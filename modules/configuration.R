@@ -138,21 +138,15 @@ removeDHIS2_configFile <- function(filename, usr, pwd, url, de=T, catCombo=T, ca
 }
 
 scrapeDHIS2_configFile <- function(filename) {
-  # Take a meta data config file, scrape the data off and 
-  # upload to dhis2 server for each part. Currently supports
-  # category options, categories, category combinations, and data elements
-  # still need to add user, indicator, and data set import
-  # for now assuming that the file has all of the necessary tabs and information
-  # overwrite indicates of overwriting of existing config is allowed.  if overwrite==T
-  # will prompt for permission on all potential overwriting operations
+  # Take a meta data config file, scrape the data off 
+  # for now assuming that the file has all of the necessary tabs a
   
   # Ex.
-  # > uploadConfig('meta-data-config.xlsx', u, p, url)
-  # Creating Options
-  # Creating Categories
-  # Creating Category Combinations
-  # Creating Data Elements
-  # Config Uploaded in 1.34 minutes
+  # > scrapeDHIS2_configFile('meta-data-config.xlsx')
+  # Config scraped in 1.3 seconds
+  # dataElements  categories  categoryOptions ...
+  # 45            12          50
+  
   startTime <- Sys.time()
   
   wb <- XLConnect::loadWorkbook(filename)
@@ -575,7 +569,7 @@ uploadDHIS2_trackerConfig <- function(tracker_config, usr, pwd, url) {
 
 
 scrapeDHIS2_trackerConfigFile <- function(filename) {
-  # Going to write this one with openxlsx
+  # Going to write this one with openxlsx since it seems to be more efficient than XLConnect's functions
   # Import a file with Tracker configuration info
   
   worksheets <- c('Program', 'Option Sets', 'Attributes', 'Stages', 'Data Elements')
@@ -627,11 +621,57 @@ checkDHIS2_objectExists <- function(name, obj_type, usr, pwd, url) {
   return(check)
 }
 
+mirrorDHIS2_config <- function()
 
 
 
-
-
+transferDHIS2_data <- function(usr.from, pwd.from, url.from, usr.to, pwd.to, url.to, 
+                               parent_ous = NULL, specific_dataSets = NULL, yearly_to_monthly=T,
+                               startDate = Sys.Date() - months(6), end= Sys.Date() + years(1)) {
+  # Pull data from one dhis2 and post to another.  If specific_dataSets is specified, it will take each character vector
+  # element and find those dataSets from the source dhis2 instance and attempt to download.  If NULL, it will attempt all.
+  
+  
+  library(lubridate)
+  
+  from.ds <- getDHIS2_Resource('dataSets', usr.from, pwd.from, url.from, 'periodType')
+  upload_results <- list()
+  for (i in 1:nrow(from.ds)) {
+    if (from.ds$displayName[i] != 'Test') {
+      
+      # download data from each dataset
+      print(from.ds$displayName[i])
+      d <- data.frame()
+      for (org in parent_ous){
+        sub <- getDHIS2_dataSet(from.ds$displayName[i], org, startDate, endDate, usr.from, pwd.from, children='true', url.from)
+        Sys.sleep(5)
+        d <- rbind.fill(d, sub)
+      }
+      d <- d[d$value != 0,]
+      
+      if (from.ds$periodType[i] == 'Yearly' & nrow(d) > 0 & yearly_to_monthly) {
+        print('Convert to monthly...')
+        # if it's yearly, we want it reproduced at the monthly level for reports. 
+        dy <- data.frame()
+        # repeat each month
+        for (m in 1:12) {
+          if (nchar(m) == 1) m <- paste0('0', m)
+          sub <- d
+          sub$period <- paste0(sub$period, m)
+          dy <- rbind.fill(dy, sub)
+        }
+        d <- dy
+      }
+      
+      if (nrow(d) > 0) {
+        resp <- postDHIS2_Values(d[,c('dataElement', 'period', 'orgUnit', 'categoryOptionCombo', 'attributeOptionCombo', 'value')], 750,usr.to, pwd.to, url.to)
+        upload_results %<>% append(., list(resp))
+        Sys.sleep(10)
+      }
+    }
+  }
+  
+}
 
 
 

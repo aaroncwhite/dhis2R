@@ -181,14 +181,14 @@ putDHIS2_metaData <- function(upload, usr, pwd, url, verbose=T) {
   
 }
 
-# PUT ----------------------------------------------------------------------------------------
-patchDHIS2_metaData <- function(upload, usr, pwd, url, verbose=T) {
+# PATCH ----------------------------------------------------------------------------------------
+patchDHIS2_metaData <- function(upload, id, obj_type, usr, pwd, url, verbose=T) {
   # patch meta data to DHIS2 instance.  this is for updating existing objects
   # you must already have the appropriate href.  this will update only the named
   # elements sent in the payload. 
   
   if (verbose==T) cat('Updating')
-  req <- PATCH(url, authenticate(usr, pwd), body= upload, encode='json')
+  req <- PATCH(paste0(url, type, '/', id), authenticate(usr, pwd), body= upload,accept_json())
   
   flush.console()
   return(req)

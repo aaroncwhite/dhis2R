@@ -624,7 +624,7 @@ checkDHIS2_objectExists <- function(name, obj_type, usr, pwd, url) {
 
 transferDHIS2_data <- function(usr.from, pwd.from, url.from, usr.to, pwd.to, url.to, 
                                parent_ous = NULL, specific_dataSets = NULL, yearly_to_monthly=T,
-                               startDate = Sys.Date() - months(6), end= Sys.Date() + years(1)) {
+                               startDate = Sys.Date() - months(6), endDate= Sys.Date() + years(1)) {
   # Pull data from one dhis2 and post to another.  If specific_dataSets is specified, it will take each character vector
   # element and find those dataSets from the source dhis2 instance and attempt to download.  If NULL, it will attempt all.
   

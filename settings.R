@@ -5,7 +5,7 @@ options(java.parameters = "-Xmx4g" )
 sapply(list.files('./modules/'), function(x) source(paste0('modules/',x)))
 
 # Set DHIS2 API credentials
-url = 'https://zl-dsp.pih.org/api/' # include the /api/ at the end of the address Ex. https://play.dhis2.org/demo/api/
+url = '' # include the /api/ at the end of the address Ex. https://play.dhis2.org/demo/api/
 usr = ''
 pwd = ''
 

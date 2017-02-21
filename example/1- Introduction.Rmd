@@ -1,0 +1,165 @@
+---
+title: "DHIS2R Introduction"
+output: html_notebook
+---
+An overview of interacting with the system and getting information back.
+
+The primary goal of these functions was to make it easier to interact and update DHIS2 from a comfortable programming environment (for me at least) and integrate with existing analysis workflows.  As the DHIS2 API keeps changing, some of these functions are starting to break, but the main interactions are still working. These functions have been tested and working with R version 3.2.4 as of January 2017. 
+
+Note:
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+# Getting Started
+Everything with the DHIS2 API is like a call and response.  You either request some piece of information and the system will talk back to you with what you asked for, you send a piece of information and the system tells you the result of what it did with that info, or you try one of those options and get an angry message saying you didn't do it properly.
+
+To start off, set some variables for your DHIS2 username, password, and api url.  Note the inclusion of the "/api/" at the end of the url address. We're going to use the demo dhis2 server from dhis2.org to start with.  The credentials have already been defined in settings.R, but you'll want to change them if interacting with a different server. 
+
+```{r}
+# To make things easier, you can define the usr, pwd, and url 
+# variables in the file and skip manually defining them every time
+source('../settings.R') # The ../ means to look in the parent directory
+```
+You might hit some missing libraries at this point.  You can try to run the "new_instance_setup.R" file to install the missing libraries.  There are a lot! 
+
+```{r}
+source('../new_instance_setup.R')
+```
+
+Ready to go?  Hopefully!
+
+# Basic Interactions
+These form the core of this set of functions.  They are located in the api.R file and are the functions that interact directly with the API.  
+
+The functions are named intuitively enough.  You can GET objects, POST new objecs, PUT updated objects, or DELETE objects. This first introduction will just focus on getting data. 
+
+### GET
+Let's start with getting the list of end points we can access.  Use *getDHIS2_ResourceTable()* to return a dataframe of available end points.  This is useful if you can't remember where to look for something or want to check a spelling.  
+
+```{r}
+end_points <- getDHIS2_ResourceTable('admin', 'district', 'https://play.dhis2.org/demo/api/')
+head(end_points)
+```
+
+Notice that we used the actual username, password and url.  That is to show that it works! From now on, we'll use the objects we stored so there is less typing. Good coders don't like typing things more than once.
+
+Think of the end points as a filing system.  Data Elements go with Data Elements, Organisation Units go with Organisation Units, etc.  Each object type has information about it's relationship with other objects, but you'll always look in the same place for that specific object. 
+
+_**IMPORTANT NOTE:**_ Just about all of the functions dealing with the API will require your username, password, and url where to look for things.  *Almost* all of the functions follow the same format: *function(object, object_type, username, password, url, ... other options)* Sometimes you won't need the object, which refers to the object id value defined in the system.  In the code block above, you didn't even need object_type, but most other functions will use that to access specific end points. 
+
+Let's try to get a specific resource.  We'll look at data elements first. This time, use *getDHIS2_Resource()*.
+```{r}
+data_elements <- getDHIS2_Resource('dataElements', usr, pwd, url)
+head(data_elements)
+```
+
+The basic response gives any code associated with each element, the object id, shortName, and displayName.  The two most important to remember are the id and displayName, but there are others available.  *getDHIS2_Resource()* supports an *add_props* parameter which allows you to specify other pieces of information available.  Pass a character vector where each element is the piece of information you want back.  Depending on your screen width, you may need to scroll to the right to see all of the columns. Here's an example adding value type and aggregation type:
+
+```{r}
+data_elements <- getDHIS2_Resource('dataElements', usr, pwd, url, add_props = c('valueType', 'aggregationType'))
+head(data_elements)
+```
+
+Starting to make sense?  Probably not yet.  How do we even know to ask for *valueType* and *aggregationType* anyways?  Enter *getDHIS2_elementInfo()* to get specific details of one object of a specific object_type. Let's use the Accute Flaccid Paralysis (Deaths < 5 yrs) data element listed above from the DHIS2 demo server. *getDHIS2_elementInfo()* uses the object_id to return the specific information requested so instead of typing the data element name, we'll use the object id (FTRrcoaog83). Here's the example:
+```{r}
+specific_example <- getDHIS2_elementInfo('FTRrcoaog83','dataElements', usr, pwd, url)
+print(specific_example)
+```
+
+Nice and long output, right?  Instead of making a table, which isn't very useful for one object, *getDHIS2_elementInfo()* returns a list object that mirrors the json payload received from the DHIS2 server.  It is a nested list, which allows for exploration of specific areas easily.  Let's see a few things we can do.
+
+Just show specific values:
+```{r}
+print(specific_example$displayName)
+
+```
+
+Here are a couple more interacting with that data element object we just downloaded:
+```{r}
+# These are all wrapped in cat functions, but it is the same idea, just prettier on the eyes. 
+cat('Aggregation Type:', specific_example$aggregationType,'')
+cat('Value Type:', specific_example$valueType,'')
+cat('Category Combo:', specific_example$categoryCombo$id,'')
+
+
+```
+
+#### EXERCISE 1:
+You now know how to get a dataframe of a specific object type and look up and individual object detail.  Use the code block below to find the categoryCombo id of the "Yellow fever referrals" data element.
+##### Step 1
+```{r}
+# Step 1 --------------------------------------------------------
+# Download the data elements and save them to an object
+data_elements <- NULL ## Replace NULL with your code to download the data
+```
+
+*HINT:*
+The grep() function allows searching text. Watch out for special characters like slashes (\ or /) and parentheses. Those are special characters and might not show up.  Let's just look for something general.  Use the console below if in RStudio to render the results interactively. 
+
+```{r}
+term_positions <- grep("Accute Flaccid Paralysis", data_elements$displayName) # returns the index positions in the displayName column where a match for the text was found.
+term_positions
+```
+
+You can use those index positions to print just that section of the data_elements table:
+```{r}
+data_elements[term_positions,] # note the trailing comma to denote that we want just the row positions in term_positions, but we want ALL columns back. 
+```
+
+Or more specifically, in just one column.
+```{r}
+data_elements$displayName[term_positions] # note that we don't have any comma here since this is now a one dimensional vector
+```
+
+##### Step 2
+```{r}
+# Find the specific data element id
+data_element_id <- NULL ## Replace NULL with your code
+```
+
+##### Step 3
+```{r}
+# Find the categoryCombo id
+cat_combo_id <- NULL ## Replace NULL with your code to find the id value
+```
+
+##### Check the answer
+```{r}
+cat('Category Combo id:', cat_combo_id, '')
+if ( !is.null(cat_combo_id) && cat_combo_id == 'ck7mRNwGDjP') cat("Good work!") else cat('Check your code again.  The value should be "ck7mRNwGDjP"')
+```
+
+#### EXERCISE 2:
+The same principles can be applied to other object types too.  The API is well-structured and consistent (even if they keep changing it).  What is the organisation level of "Njandama MCHP"?  How many data sets are collected there? (The DHIS2 uses the British spelling 'organisation'. If you use a z, the code will fail.)
+```{r}
+# Use this code block to investigate
+
+# Question 1 -------------------------------------------------------- 
+# What is the organisation level of Njandama MCHP?
+
+organisation_units <- NULL ## Replace NULL with your code
+
+organisation_unit_id <- NULL ## Replace NULL with your code
+
+organisation_unit_detail <- NULL ## Replace NULL with your code
+
+# Find the level of the Org Unit 
+# Hint: use the names() function on your object to see what high level pieces of information are available.  
+# You can then call them using the $ operator like this- object$displayName
+organisation_unit_level <- NULL ## Replace NULL with your code
+
+
+# Question 2 -------------------------------------------------------- 
+# How many data sets are collected there?
+# Hint: count the number of child elements using the length function
+n_dataSets <- NULL ## Replace NULL with your code
+
+
+# Answer Check ------------------------------------------------------
+if (!is.null(organisation_unit_detail) && organisation_unit_level == 4) cat('Organiation unit level correct!') else ('Check your organisation unit level code')
+if (!is.null(organisation_unit_detail) && n_dataSets == 21) cat('Number of data sets correct!') else ('Check your data set code')
+
+```
+
+That's about it for the GET functions.  You should now understand how to get information about a specific object type within DHIS2, find detailed information about a specific instance of that object type, and explore the results.  When is this useful?  All the time.  Using the UI can be tedious to double check the valueType of every data element you just uploaded or to see where an organisation unit has been placed in the hierarchy. This makes it much easier to do batch processing of data elements or any other type of DHIS2 data.

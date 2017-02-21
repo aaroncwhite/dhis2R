@@ -60,7 +60,7 @@ getDHIS2_Request <- function(usr, pwd, url, add_props=c()) {
   if (length(add_props)>0) {add_props <- paste0(",",add_props, collapse='')}
   
   url <- paste0(url, '.json?fields=displayName,id,shortName,code',add_props, '&paging=false') # we dont' want to page the file
-  req <- GET(url, authenticate(usr, pwd, type='basic')) # hit the server
+  req <- GET(url, authenticate(usr, pwd, type='basic'), accept_json()) # hit the server
   req_content <- content(req)[[1]] # take the response data from the info we got back from the server
   
   # build the table that as as many rows as there are options and has as many columns as each option contains
@@ -196,11 +196,11 @@ patchDHIS2_metaData <- function(upload, id, obj_type, usr, pwd, url, verbose=T) 
 }
 
 # POST ---------------------------------------------------------------------------------------
-postDHIS2_metaData <- function(obj, usr, pwd, url, type='dataElements', verbose=T) {
+postDHIS2_metaData <- function(obj,obj_type, usr, pwd, url, verbose=T) {
   # post meta data to DHIS2 instance
   # find the correct resource link
 
-  req <- POST(paste0(url,type), authenticate(usr, pwd), body= obj, encode='json')
+  req <- POST(paste0(url,obj_type), authenticate(usr, pwd), body= obj, encode='json')
     
   flush.console()
   return(req)

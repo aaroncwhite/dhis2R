@@ -1,0 +1,121 @@
+---
+title: "DHIS2R Metadata Creation"
+subtitle: How to create and post metadata to the system.
+output: html_notebook
+---
+The primary goal of these functions was to make it easier to interact and update DHIS2 from a comfortable programming environment (for me at least) and integrate with existing analysis workflows.  As the DHIS2 API keeps changing, some of these functions are starting to break, but the main interactions are still working. These functions have been tested and working with R version 3.2.4 as of January 2017. It's possible that RCurl works differently for R 3.3.x, so be aware. 
+
+Note:
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+# Import the functions and your username, password, and url settings defined in settings.R
+source('../settings.R') # The ../ means to look in the parent directory
+```
+
+# Creating and posting metadata
+The general processes goes like this:
+* Figure out what the metadata is 
+* Make the payload 
+* Upload to the system
+
+## Payload Creation
+Before we can upload data to the system, we need to make sure it's in the right format.  If it's not, DHIS2 will get angry, and you'll spend hours banging your head against the desk wondering why it doesn't work. Let me spare you some of that agony. 
+
+### createDHIS2_X
+DHIS2 uses json and R likes lists.  Luckily, there are libraries that switch things back and forth for us.  On top of that, there are several functions that help the process along, fill in certain default values that we might want, and gives you back a nice package ready to send up to the system. In the console, type "createDHIS2_" to see the list of options that are currently available. There's quite a few!  We'll just look at a couple examples for now. 
+
+Let's make a data element payload for "ANC 1st Visit" using *createDHIS2_DataElement()*.
+```{r}
+example_data_element <- createDHIS2_DataElement('ANC 1st Visit')
+example_data_element
+```
+
+See how the function made it much easier to create all of that?  You gave it a name, the function made the rest of the required information for you based on some defaults.  Let's make a much more detailed version. 
+
+```{r}
+example_data_element <- createDHIS2_DataElement('Womens Health- ANC 1st Visit',
+                                                shortName = 'ANC 1st Visit',
+                                                description = 'The first time a woman visited the clinic for antenatal care',
+                                                valueType = 'INTEGER_POSITIVE',
+                                                aggregationType = 'AVERAGE')
+
+example_data_element
+```
+
+The process is similar for all of the createDHIS2_X functions.  Here's a category example:
+```{r}
+example_category <- createDHIS2_Category('Sex', options = c('Female','Male'))
+example_category
+```
+
+_*NOTE:*_ The API is no different than the UI.  When actually configuring the system, you must create category options before being able to create categories, categories before category combinations, etc. 
+
+When a createDHIS2_X has an options argument, it accepts a character vector of the name options (c('Female', 'Male') in the example above).
+
+### Posting data
+Time to actually post this data!  Let's upload the data element we just made. POST is used when creating anything new that does not already exist in the system. Use *postDHIS2_metaData()* for this. Just like the getDHIS2_X commands, this requires the payload, object_type, username, password, and url.
+```{r}
+post_result <- postDHIS2_metaData(example_data_element,'dataElements', usr, pwd, url)
+post_result
+```
+
+What does that mean? The main thing to look for is "Status: 201" which means a successful operation. Look at the response in more detail with the *content()* function from the httr library (which does all of the actual curl commands to interact with the API).
+```{r}
+content(post_result)
+```
+
+Instead of having to always call *content()* on your response, call it once and assign it to a new object, or overwrite your existing one. Then you can return specific elements within the response like the new id of the object just created. 
+```{r}
+post_result <- content(post_result)
+# print the uid of the new object
+post_result$response$uid
+```
+
+Let's use *getDHIS2_elementInfo()* to see how DHIS2 took our information and changed it slightly.
+```{r}
+dhis2_example_data_element <- getDHIS2_elementInfo(post_result$response$uid, 'dataElements', usr, pwd, url)
+dhis2_example_data_element
+```
+The system has added several other important parameters upon processing the payload you sent.  Take a look in the Maintenance app of the demo site.  Your data element is there! (https://play.dhis2.org/demo/)
+
+### A little more complicated now...
+That was easy, but that's because we didn't have to define any related objects.  Let's go through the process of making a category combination. We'll make a combination with two categories- Age and Trimester.
+
+First, we need to make the category options. This will take advantage of looping and lapply.  We'll do it both ways. 
+```{r}
+trimesters <- c('1st', '2nd', '3rd')
+for (trimester in trimesters) {
+  # we won't save the options here, but 
+}
+```
+
+
+
+##### Exercise 1
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

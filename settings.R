@@ -6,8 +6,8 @@ sapply(list.files('./modules/'), function(x) source(paste0('modules/',x)))
 
 # Set DHIS2 API credentials
 url = 'https://zl-dsp.pih.org/api/' # include the /api/ at the end of the address Ex. https://play.dhis2.org/demo/api/
-usr = 'awhite'
-pwd = '0KnaOBJMrPGgGV'
+usr = ''
+pwd = ''
 
 # Uncomment the lines below if there is an MOH system
 # to interact with.

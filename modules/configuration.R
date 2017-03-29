@@ -51,12 +51,14 @@ uploadDHIS2_configFile <- function(filename, usr, pwd, url, overwrite=F, prompt_
     # upload each object type as defined  by the list name and data inside that object
     # determine appropriate format using uploadDHIS2_metaData() switch to appropriately
     # structure upload.
-    
-    obj_type <- names(config)[obj]
-    resp <- list(uploadDHIS2_metaData(config[[obj]], obj_type = obj_type, usr, pwd, url, 
-                                         overwrite=overwrite, prompt=prompt_overwrite, verbose=verbose))
-    names(resp) <- obj_type 
-    results <- append(results, resp)
+    if (nrow(config[[obj]]) > 0) {
+      obj_type <- names(config)[obj]
+      resp <- list(uploadDHIS2_metaData(config[[obj]], obj_type = obj_type, usr, pwd, url, 
+                                        overwrite=overwrite, prompt=prompt_overwrite, verbose=verbose))
+      names(resp) <- obj_type 
+      results <- append(results, resp)
+    }
+
   }
   
   cat("------------------ Upload Completed ------------------\n")
@@ -241,7 +243,7 @@ cloneDHIS2_userRole <- function(id, usr, pwd, url, new_name) {
   payload <- payload[!(names(payload) %in% c('users','id','href', 'created', 'lastUpdated','dataSets'))]
   
   payload$name <- new_name
-  resp <- postDHIS2_metaData(payload, usr, pwd, type='userRoles')
+  resp <- postDHIS2_metaData(payload, 'userRoles', usr, pwd)
   return(resp)
 }
 
@@ -340,7 +342,7 @@ uploadDHIS2_metaData <- function(obj, obj_type, usr, pwd, url,overwrite=F, promp
     }
     else if (upload$name %in% existingObjects$displayName == FALSE) {
       # any categories that DO NOT exist at all will always be uploaded
-      resp <- content(postDHIS2_metaData(upload, usr, pwd, url, type=obj_type, verbose=verbose), type = 'application/json')
+      resp <- content(postDHIS2_metaData(upload, obj_type=obj_type, usr, pwd, url, verbose=verbose), type = 'application/json')
       req$uploaded %<>% append(., list(list('name' = upload$name, 'response' = list(resp))))
     }
     else {
@@ -402,7 +404,7 @@ uploadDHIS2_orgUnitHierarchy <- function(file, usr, pwd, url) {
   responses <- list()
   for (l in 1:nrow(orgUnit_data$organisationUnitLevels)) {
     payload <- list('name' = orgUnit_data$organisationUnitLevels$name[l], 'level' = orgUnit_data$organisationUnitLevels$levels[l])
-    resp <- postDHIS2_metaData(payload, usr, pwd, url, 'organisationUnitLevels')
+    resp <- postDHIS2_metaData(payload,'organisationUnitLevels', usr, pwd, url)
     reponses[['levels']] %<>% append(., list(resp))
   }
   
@@ -423,7 +425,7 @@ uploadDHIS2_trackerConfig <- function(tracker_config, usr, pwd, url) {
   options <- getDHIS2_Resource('options', usr, pwd, url)
   options_created <- list()
   for (i in tracker_config$options[!(tracker_config$options %in% options$displayName)]) {
-    options_created <- append(options_created, list(postDHIS2_metaData(createDHIS2_option(i, i), usr, pwd, url, 'options')))
+    options_created <- append(options_created, list(postDHIS2_metaData(createDHIS2_option(i, i), 'options', usr, pwd, url )))
   }
   
   # Update the list of options
@@ -473,7 +475,7 @@ uploadDHIS2_trackerConfig <- function(tracker_config, usr, pwd, url) {
           cat("New name:", rename,'\n')
           resp <- confirmAction("Is this correct? ")
         }
-        new_os <- postDHIS2_metaData(createDHIS2_optionSet(resp, opt_ids))
+        new_os <- postDHIS2_metaData(createDHIS2_optionSet(resp, opt_ids), 'optionSets', usr, pwd, url)
         optionSets_created <- append(optionSets_created, list(new_os))
         
         # now we'll just take the id out of the response
@@ -485,7 +487,7 @@ uploadDHIS2_trackerConfig <- function(tracker_config, usr, pwd, url) {
       }
     }
     else {
-      new_os <- postDHIS2_metaData(createDHIS2_optionSet(optSet[1,1], opt_ids))
+      new_os <- postDHIS2_metaData(createDHIS2_optionSet(optSet[1,1], opt_ids), 'optionSets', usr, pwd, url)
       optionSets_created <- append(optionSets_created, list(new_os))
       new_os <- new_os$response$lastImported
     }
@@ -519,7 +521,7 @@ uploadDHIS2_trackerConfig <- function(tracker_config, usr, pwd, url) {
           resp <- confirmAction("Is this correct? ")
         }
         new_att <- postDHIS2_metaData(createDHIS2_trackedEntityAttribute(resp, att$shortName, att$aggregationType,
-                                                                        att$valueType, att$optionSet))
+                                                                        att$valueType, att$optionSet), 'trackedEntityAttributes', usr, pwd, url)
         optionSets_created <- append(teiAtt_created, list(new_att))
         
         # now we'll just take the id out of the response
@@ -532,7 +534,7 @@ uploadDHIS2_trackerConfig <- function(tracker_config, usr, pwd, url) {
     }
     else {
       new_att <- postDHIS2_metaData(createDHIS2_trackedEntityAttribute(att_name, att$shortName, att$aggregationType,
-                                                                       att$valueType, att$optionSet))
+                                                                       att$valueType, att$optionSet), 'trackedEntityAttributes', usr, pwd, url)
       optionSets_created <- append(optionSets_created, list(new_att))
       new_att <- new_att$response$lastImported
     }
@@ -559,7 +561,7 @@ uploadDHIS2_trackerConfig <- function(tracker_config, usr, pwd, url) {
       prog_id <- check$existing_id
     }
     else {
-      prog_resp <- postDHIS2_metaData(createDHIS2_program(check$new_name,prog$shortName,prog$description, prog$trackedEntity, prog$attributes))      
+      prog_resp <- postDHIS2_metaData(createDHIS2_program(check$new_name,prog$shortName,prog$description, prog$trackedEntity, prog$attributes), 'programs', usr, pwd, url)      
     }
   }
   
@@ -621,13 +623,10 @@ checkDHIS2_objectExists <- function(name, obj_type, usr, pwd, url) {
   return(check)
 }
 
-mirrorDHIS2_config <- function()
-
-
 
 transferDHIS2_data <- function(usr.from, pwd.from, url.from, usr.to, pwd.to, url.to, 
                                parent_ous = NULL, specific_dataSets = NULL, yearly_to_monthly=T,
-                               startDate = Sys.Date() - months(6), end= Sys.Date() + years(1)) {
+                               startDate = Sys.Date() - months(6), endDate= Sys.Date() + years(1)) {
   # Pull data from one dhis2 and post to another.  If specific_dataSets is specified, it will take each character vector
   # element and find those dataSets from the source dhis2 instance and attempt to download.  If NULL, it will attempt all.
   

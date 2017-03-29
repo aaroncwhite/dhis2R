@@ -5,4 +5,9 @@ necessary <- c('httr', 'magrittr', 'RJSONIO', 'XLConnect','rJava', 'rlist', 'str
 install <- necessary[!(necessary %in% installed.packages()[,'Package'])]
 
 if(length(install) == 0) {warning('It seems all the packages you need are installed.');stop()}
+necessary <- c('httr', 'magrittr', 'RJSONIO', 'XLConnect', 'rlist', 'stringr', 
+               'parallel', 'foreach', 'translateR', 'openxlsx', 'htmlTable')
+
+install <- necessary[!(necessary %in% installed.packages()[,'Package'])]
+
 install.packages(install)

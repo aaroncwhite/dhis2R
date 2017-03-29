@@ -40,10 +40,13 @@ getDHIS2_dataSet <- function(dataSet, orgUnit, start, end, usr, pwd, children="t
 
 }
 
-getDHIS2_Resource <- function(resourceName, usr, pwd, url, add_props=c()) {
+getDHIS2_Resource <- function(resourceName, usr, pwd, url, add_props=c(), transform_to_df=T) {
   # creates the appropriate url from which to fetch information
   
-  resource <- getDHIS2_Request(usr, pwd, url= paste0(url, resourceName), add_props = add_props)
+  resource <- getDHIS2_Request(usr, pwd, 
+                               url= paste0(url, resourceName), 
+                               add_props = add_props, 
+                               transform_to_df = transform_to_df)
   
   
   return(resource)
@@ -51,7 +54,7 @@ getDHIS2_Resource <- function(resourceName, usr, pwd, url, add_props=c()) {
 
 
 
-getDHIS2_Request <- function(usr, pwd, url, add_props=c()) {
+getDHIS2_Request <- function(usr, pwd, url, add_props=c(), transform_to_df=T) {
   ## This will take a specific api url for dataElements or categoryOptions, etc
   ## and return a table with all information available.
   ## This only works well for the main resource tables.  Specific data element
@@ -60,28 +63,34 @@ getDHIS2_Request <- function(usr, pwd, url, add_props=c()) {
   if (length(add_props)>0) {add_props <- paste0(",",add_props, collapse='')}
   
   url <- paste0(url, '.json?fields=displayName,id,shortName,code',add_props, '&paging=false') # we dont' want to page the file
-  req <- GET(url, authenticate(usr, pwd, type='basic')) # hit the server
+  req <- GET(url, authenticate(usr, pwd, type='basic'), accept_json()) # hit the server
   req_content <- content(req)[[1]] # take the response data from the info we got back from the server
   
-  # build the table that as as many rows as there are options and has as many columns as each option contains
-  # this is confusing.  for example: if the response returns 110 data elements, the table will have 110 rows
-  # then, each data element has 5 components, so we'll make 5 columns and populate the table accordingly
-  output <- data.frame(matrix(nrow=length(req_content), ncol=0)) 
-  if (length(req_content) == 0) {
-    output <- data.frame(matrix(nrow=0, ncol=2))
-    names(output) <- c('displayName', 'id')
+  if (transform_to_df) {
+    # build the table that as as many rows as there are options and has as many columns as each option contains
+    # this is confusing.  for example: if the response returns 110 data elements, the table will have 110 rows
+    # then, each data element has 5 components, so we'll make 5 columns and populate the table accordingly
+    output <- data.frame(matrix(nrow=length(req_content), ncol=0)) 
+    if (length(req_content) == 0) {
+      output <- data.frame(matrix(nrow=0, ncol=2))
+      names(output) <- c('displayName', 'id')
+    }
+    else {
+      for (i in 1:length(req_content)) { # look at each resource element in the response
+        # some elements have codes, some don't. this causes problems.
+        row <- unlist(req_content[[i]])
+        for (e in 1:length(row)) {
+          output[i,names(row)[e]] <-  row[e] # 'unlist' it, so it's just a vector of values and stick it into that row
+        }
+      }  
+      # names(output) <- names(req_content[[1]]) # give it the names from the server
+      
+    }
   }
   else {
-    for (i in 1:length(req_content)) { # look at each resource element in the response
-      # some elements have codes, some don't. this causes problems.
-      row <- unlist(req_content[[i]])
-      for (e in 1:length(row)) {
-        output[i,names(row)[e]] <-  row[e] # 'unlist' it, so it's just a vector of values and stick it into that row
-      }
-    }  
-    # names(output) <- names(req_content[[1]]) # give it the names from the server
-    
+    output <- req_content
   }
+  
 
   return(output)
 }
@@ -110,15 +119,27 @@ getDHIS2_elementInfo <- function(id, type, usr, pwd, url, content=T) {
   # uses the urls from get Resource table and resource to pull further information
   # use to pull data element info on combo options, etc
   # type and id must be exact
-  
-  req <- GET(paste0(url, type,"/", id), authenticate(usr, pwd, type='basic'))
-  if (req$status_code == 200 & content==T) {
-    return(content(req))
+  if (length(id) > 1) {
+    # if more than 1 id is passed, the function will recurse across all elements in the vector
+    output <- list()
+    for (i in 1:length(id)) {
+      output %<>% append(list(getDHIS2_elementInfo(id[i], type, usr, pwd, url, content=content)))
+    }
+    return(output)
   }
   else {
-    return(req)
+    req <- GET(paste0(url, type,"/", id), authenticate(usr, pwd, type='basic'))
+    if (req$status_code == 200 & content==T) {
+      return(content(req))
+    }
+    else {
+      return(req)
+    }
   }
+
 }
+
+getDHIS2_elements <- function(ids)
 
 getDHIS2_objectChildren <- function(obj_id, obj_type, usr, pwd, url) {
   # Download element info for a specific object and return the relevant
@@ -196,11 +217,11 @@ patchDHIS2_metaData <- function(upload, id, obj_type, usr, pwd, url, verbose=T) 
 }
 
 # POST ---------------------------------------------------------------------------------------
-postDHIS2_metaData <- function(obj, usr, pwd, url, type='dataElements', verbose=T) {
+postDHIS2_metaData <- function(obj,obj_type, usr, pwd, url, verbose=T) {
   # post meta data to DHIS2 instance
   # find the correct resource link
 
-  req <- POST(paste0(url,type), authenticate(usr, pwd), body= obj, encode='json')
+  req <- POST(paste0(url,obj_type), authenticate(usr, pwd), body= obj, encode='json')
     
   flush.console()
   return(req)

@@ -51,13 +51,13 @@ createDHIS2_DataElementGroup <- function(name, shortName = NA, aggregationType='
 }
 
 
-createDHIS2_DataElement <- function(name, shortName = NA, code="", description="", domainType='AGGREGATE', valueType= 'INTEGER_POSITIVE', 
+createDHIS2_DataElement <- function(name, shortName = NA, code="", description="", domainType='AGGREGATE', valueType= 'INTEGER', 
                                     aggregationType='SUM', categoryCombo='default', formName="", other_properties=list()) {
   # make a list object for upload to DHIS2.  requires a name at least
   # other properties can be passed using other_properties in named list f
   # returns list for upload using postDHIS2_metaData()
   
-  if (is.na(shortName) | nchar(shortName) > 50) {shortName <- paste(code, name)} # make sure we have something for short name to post
+  if (is.na(shortName) | nchar(shortName) > 50) {shortName <- name} # make sure we have something for short name to post
   
   # these are all necessary elements
   upload <- list('name' = name, 'shortName'=stri_sub(shortName, length=50),'code' = code, 'description'=description, 'domainType' = domainType, 'formName'= formName, 'valueType' = valueType, 
@@ -247,54 +247,58 @@ prepareDHIS2_dataValues <- function(df, usr, pwd, url="https://zl-dsp.pih.org/ap
   
   dataElements <- getDHIS2_Resource('dataElements', usr, pwd, url)
   catOptionCombos <- getDHIS2_Resource('categoryOptionCombos', usr, pwd, url)
+
+  output <- replaceNames(df,'dataElement', dataElements)
   
-  output <- data.frame(matrix(nrow=0, ncol=6))
-  unique_dataElements <- unique(df$dataElement)
-  unique_dataElements <- unique_dataElements[!is.na(unique_dataElements)]
-  for (de in unique_dataElements) {
-    print(de)
-    if (de %in% dataElements$displayName) { # make sure the data element exists
-      de_info <- content(getDHIS2_elementInfo(dataElements$id[dataElements$displayName == de], 'dataElements', usr, pwd, url, content=F))
-      
-      # find the related category combination information
-      catCombo_info <- content(getDHIS2_elementInfo(de_info$categoryCombo$id, 'categoryCombos', usr, pwd, url, content = F))
-      catOptionCombo_ids <- unlist(catCombo_info$categoryOptionCombos) # this will return just the ids we want to try to find
-      de_optionCombos <- catOptionCombos[catOptionCombos$id %in% catOptionCombo_ids,]
-      
-      sub <- df[df$dataElement == de,]
-      sub <- sub[!is.na(sub$dataElement),]
-      # SET THE OPTION COMBOS
-      # so we have the right ids to work with, now let's look at the optionCombos
-      if (is.null(catOptionCombo_ids)) { # if there is no disaggregation we can just assign the default
-        sub$categoryOptionCombo[sub$dataElement == de & sub$categoryOptionCombo == "default"] <- catOptionCombos$id[catOptionCombos$displayName == 'default']
-      }
-      else {
-        # if it's different, let's match the right category option combos
-        stated_combos <- unique(sub$categoryOptionCombo[sub$dataElement == de])
-        stated_combos <- stated_combos[!is.na(stated_combos)]
-        for (opt_combo in stated_combos) {
-          # since dhis2 might have created the combination of categories in a 
-          # different order than i typed it, this will attempt to match each individual
-          # option and guess the right one, if not, it will prompt for a choice.
-          opt_combo_index <- matchDHIS2_catOptions(opt_combo, de_optionCombos)
-          
-          sub$categoryOptionCombo[sub$categoryOptionCombo == opt_combo & sub$dataElement == de] <- de_optionCombos$id[opt_combo_index]
-          
-        }
-        
-      }
-      
-      # assign the data element id
-      sub$dataElement[sub$dataElement == de] <- dataElements$id[dataElements$displayName == de]
-      output <- rbind.data.frame(output, sub)
-    }
-    else {
-      print("Skipping because does not exist in the system. Rows have been removed.")
-      # df <- df[df$dataElement != de,]
-    }
-  }
+  # output <- data.frame(matrix(nrow=0, ncol=6))
+  # unique_dataElements <- unique(df$dataElement)
+  # unique_dataElements <- unique_dataElements[!is.na(unique_dataElements)]
+  # for (de in unique_dataElements) {
+  #   print(de)
+  #   if (de %in% dataElements$displayName) { # make sure the data element exists
+  #     de_info <- content(getDHIS2_elementInfo(dataElements$id[dataElements$displayName == de], 'dataElements', usr, pwd, url, content=F))
+  #     
+  #     # find the related category combination information
+  #     catCombo_info <- content(getDHIS2_elementInfo(de_info$categoryCombo$id, 'categoryCombos', usr, pwd, url, content = F))
+  #     catOptionCombo_ids <- unlist(catCombo_info$categoryOptionCombos) # this will return just the ids we want to try to find
+  #     de_optionCombos <- catOptionCombos[catOptionCombos$id %in% catOptionCombo_ids,]
+  #     
+  #     sub <- df[df$dataElement == de,]
+  #     sub <- sub[!is.na(sub$dataElement),]
+  #     # SET THE OPTION COMBOS
+  #     # so we have the right ids to work with, now let's look at the optionCombos
+  #     if (is.null(catOptionCombo_ids)) { # if there is no disaggregation we can just assign the default
+  #       sub$categoryOptionCombo[sub$dataElement == de & sub$categoryOptionCombo == "default"] <- catOptionCombos$id[catOptionCombos$displayName == 'default']
+  #     }
+  #     else {
+  #       # if it's different, let's match the right category option combos
+  #       stated_combos <- unique(sub$categoryOptionCombo[sub$dataElement == de])
+  #       stated_combos <- stated_combos[!is.na(stated_combos)]
+  #       for (opt_combo in stated_combos) {
+  #         # since dhis2 might have created the combination of categories in a 
+  #         # different order than i typed it, this will attempt to match each individual
+  #         # option and guess the right one, if not, it will prompt for a choice.
+  #         opt_combo_index <- matchDHIS2_catOptions(opt_combo, de_optionCombos)
+  #         
+  #         sub$categoryOptionCombo[sub$categoryOptionCombo == opt_combo & sub$dataElement == de] <- de_optionCombos$id[opt_combo_index]
+  #         
+  #       }
+  #       
+  #     }
+  #     
+  #     # assign the data element id
+  #     sub$dataElement[sub$dataElement == de] <- dataElements$id[dataElements$displayName == de]
+  #     output <- rbind.data.frame(output, sub)
+  #   }
+  #   else {
+  #     print("Skipping because does not exist in the system. Rows have been removed.")
+  #     # df <- df[df$dataElement != de,]
+  #   }
+  # }
   orgUnits <- getDHIS2_Resource('organisationUnits', usr, pwd, url)
   output <- replaceNames(output, 'orgUnit', orgUnits)
+  
+  output <- replaceNames(output, 'attributeOptionCombo', catOptionCombos)
   
   return(output)
   

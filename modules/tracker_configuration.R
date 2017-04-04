@@ -6,10 +6,11 @@
 
 # These will handle the proper munging and uploading of data from the EMR data. Metadata configuration happens elsewhere (either with the tracker config file or in the UI)
 
-uploadDHIS2_trackedEntityInstances <- function(df, program_name, usr, pwd, url, conf_map) {
+uploadDHIS2_trackedEntityInstances <- function(df, program_name, usr, pwd, url, conf_map, date_map, parallel=T, n_clust=detectCores(), source_files='') {
   # upload a data frame with one row per TEI to stated program. 
   # conf_map can be a key/value vector where names are the columns from the df and values are the trackedentityattribute
   # in dhis2
+  # also enrolls TEIs in the program based on date map
   
   if (!('orgUnit' %in% names(df))) {# data often have location instead of orgUnit label.  No error handling here yet. 
     cat('OrgUnit seems to be missing. Available options:\n')
@@ -43,16 +44,26 @@ uploadDHIS2_trackedEntityInstances <- function(df, program_name, usr, pwd, url, 
   cat("Using program:", program_data$name, '\n')
   
   # now let's see if there's a conf_map
-  if (missing) {
+  if (missing(conf_map)) {
     cat("No attribute mapping defined. Let's do that.\n")
-    
     program_attributes <- map_trackedEntityAttributes(df, program_data, usr, pwd, url)
-    
-    # everything should be mapped appropriately now, let's map things in the right way
-    
+
   }
   
-  
+  if (parallel) {
+    cl <- spin_up_clusters(n_clust, source_files = source_files) # start the cluster
+    # make the initial payloads
+
+    # things can time out if trying to upload a lot of data at once
+    resps <- foreach(i=1:nrow(df), .combine=append) %dopar% {
+      cat(sprintf("-------- %s -----------", i))
+      response <- create_TEI_and_Enrollment(df[i,], program_data, attribute_map, date_map, usr, pwd, url)
+      return(response)
+    
+    }
+    stopCluster(cl)
+  }
+  return(resps)
   
 }
 
@@ -97,6 +108,88 @@ map_trackedEntityAttributes <- function(df, program_data, usr, pwd, url) {
   return(program_ids)
 }
 
+createDHIS2_trackedEntityInstances <- function(df, te_id, attribute_map, parallel=T, n_core=detectCores(), source_files='', cl) {
+  # convert a whole dataframe with one row per trackedEntityInstance into payloads for dhis2
+  if (parallel) {
+    # allow for spinning cluster up once from a parent function
+    if (missing(cl)) {
+      cl <- spin_up_clusters(n_core,source_files = source_files)
+      stop_clust <- T
+    }
+    
+    payloads <- foreach(i=1:nrow(df), .combine = append) %dopar% {
+      list(convert_row_to_tei(df[i,], te_id, attribute_map))
+    }
+    if (stop_clust) stopCluster(cl)
+  }
+  else {
+    # not sure how to dynamically substitute special command %dopar%.  This is not DRY, but it works for now.
+    payloads <- foreach(i=1:nrow(df), .combine = append) %do% {
+      list(convert_row_to_tei(df[i,], te_id, attribute_map))
+    }
+  }
+  return(ifelse(length(payloads)>1, list('trackedEntityInstances' = payloads), payloads))
+
+}
+
+createDHIS2_programEnrollments <- function(df, program_data, tei_response, date_map, parallel=T, n_core=detectCores(), source='', stop_clust=T, cl) {
+  # take a response from posting tracked entity instances and enroll those instances in the appropriate program
+  tei_ids <- sapply(tei_response$importSummaries, function(x) x$reference)
+  df$trackedEntityInstance <- tei_ids # these will be in the same order
+  
+  if (parallel) {
+    if (missing(cl)) {
+      cl <- spin_up_clusters(n_core, source_files = source_files)
+      stop_clust <- T
+    }
+    payload <- foreach(i=1:nrow(df), .combine = append) %dopar% {
+      list(convert_row_to_enrollment(df[i,], program_data, date_map))
+    }
+    if (stop_clust) stopCluster(cl)
+  }
+  
+  return(ifelse(length(payload) > 1, list('enrollments' = payload), payload))
+
+  
+}
+
+create_TEI_and_Enrollment <- function(row, program_data, attribute_map, date_map, usr, pwd, url) {
+  # Isolated instance for one specific row.  Creating this because of errors kicking when trying to 
+  # batch all TrackedEntityInstance creation and Enrollments
+  # this will create the trackedEntityInstance and then enroll it in the proper program in one go
+  cat(sprintf('PtID: %s  Identifier: %s\n', row$patient_id, row$identifier))
+  payload <- convert_row_to_tei(row, program_data$trackedEntity$id, attribute_map)
+  tei_resp <- postDHIS2_metaData(payload, 'trackedEntityInstances', usr, pwd, url)
+  if (check_response(tei_resp, 'TEI')) {
+    # tracked entity creation was successfull, now enroll in the program
+    tei_resp %<>% content()
+    row$trackedEntityInstance <- tei_resp$response$reference
+    payload <- convert_row_to_enrollment(row, program_data, date_map)
+    enroll_resp <- postDHIS2_metaData(payload, 'enrollments', usr, pwd, url)
+    if (check_response(enroll_resp, "Enrollment")) {
+      enroll_resp %<>% content()
+    }
+    return(list('tei' = tei_resp, 'enrollment' = enroll_resp))
+  }
+  else {
+    return(list('tei' = tei_resp, 'enrollment' = NULL))
+  }
+  
+}
+
+check_response <- function(resp, text) {
+  # used to continue process, returns T/F
+  if( resp$status_code %in% 200:204) {
+    cat(sprintf('%s Success!\n', text))
+    return(T)
+    
+  }
+  else {
+    cat('Something went wrong\n')
+    return(F)
+  }
+}
+
 convert_row_to_tei <- function(row, te_id, attribute_map) {
   # requires at least a column called "orgUnit" for enrollment site
   # plus any attributes defined in conf
@@ -113,7 +206,7 @@ convert_row_to_tei <- function(row, te_id, attribute_map) {
   return(list('trackedEntity' = te_id, 'orgUnit' = orgUnit, 'attributes' = attribute_list))
 }
 
-convert_row_to_enrollment <- function(row, program_data, te_id, tei_id, date_map) {
+convert_row_to_enrollment <- function(row, program_data, date_map) {
   # convert row to enrollment
   # requires trackedEntity id (te_id) and trackedEntityInstance id (tei_id)
   # When a new trackedEntityInstance is posted to the API it returns the tei_id as response$reference
@@ -123,8 +216,8 @@ convert_row_to_enrollment <- function(row, program_data, te_id, tei_id, date_map
   
   payload <- list('program' = program_data$id,
        'orgUnit' = row$orgUnit,
-       'trackedEntity' = te_id, 
-       'trackedEntityInstance' = tei_id
+       'trackedEntity' = program_data$trackedEntity$id, 
+       'trackedEntityInstance' = row$trackedEntityInstance
        )
   dates <- row[names(date_map)] %>% lapply(function(x) x) 
   names(dates) <- date_map

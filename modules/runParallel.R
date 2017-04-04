@@ -58,4 +58,13 @@ runParallel <- function(obj, apply_fun, result_combine=rbind, source_files=NA, n
   
 }
 
-
+spin_up_clusters <- function(n_clust, sink='sink', source_files=NA) {
+  cl <- makeCluster(n_clust)
+  registerDoParallel(cl)
+  if (!dir.exists(sink)) dir.create(sink)
+  foreach(i=1:n_clust) %dopar% {
+    sink(paste0(sink,'/',i,'.txt'))
+    sapply(source_files, source)
+  }
+  return(cl)
+}

@@ -112,8 +112,9 @@ calcSplits <- function(df, splitBy) {
   # 2 703   1404
   
   # returns a dataframe with start and end points for each segment
-  
+  if (!is.data.frame(df)) df <- data.frame('col' = 1:length(df)) # this should handle passing it other classes of object
   # calculate how many splits we think we need
+  
   nsplit <- floor(nrow(df)/splitBy) 
   split <- rep(splitBy, nsplit)
   remainder <- nrow(df) %% splitBy
@@ -170,12 +171,17 @@ promptResponse <- function(message, valid_responses) {
   return(resp)
 }
 
-promptNumber <- function(message, min, max) {
+promptNumber <- function(message, min, max, range=NA) {
   # prompt for a response with a value of a number
   # check that number fits within bounds of min and max
-  resp <- readline(message)
-  while (!(resp %in% min:max)) {
-    resp <- readline(paste0(resp,' is outside of valid range(',min,', ',max,'). Please enter a valid number: '))
+  
+  if (!missing(min) & !missing(max)) {
+    range <- min:max
+  }
+  
+  resp <- readline(message) %>% as.numeric()
+  while (!(resp %in% range)) {
+    resp <- readline(paste0(resp,' is not a valid option. Please enter a valid number: ')) %>% as.numeric()
   }
   return(as.numeric(resp))
 }

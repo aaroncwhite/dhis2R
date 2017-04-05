@@ -55,8 +55,8 @@ uploadDHIS2_trackedEntityInstances <- function(df, program_name, usr, pwd, url, 
     # make the initial payloads
 
     # things can time out if trying to upload a lot of data at once
-    resps <- foreach(i=1:nrow(df), .combine=append) %dopar% {
-      cat(sprintf("-------- %s -----------", i))
+    resps <- foreach(i=550:nrow(df), .combine=append) %dopar% {
+      cat(sprintf("-------- %s -----------\n", i))
       response <- create_TEI_and_Enrollment(df[i,], program_data, attribute_map, date_map, usr, pwd, url)
       return(response)
     
@@ -108,7 +108,7 @@ map_trackedEntityAttributes <- function(df, program_data, usr, pwd, url) {
   return(program_ids)
 }
 
-createDHIS2_trackedEntityInstances <- function(df, te_id, attribute_map, parallel=T, n_core=detectCores(), source_files='', cl) {
+createDHIS2_trackedEntityInstances <- function(df, program_data, attribute_map, date_map, parallel=T, n_core=detectCores(), source_files='', cl) {
   # convert a whole dataframe with one row per trackedEntityInstance into payloads for dhis2
   if (parallel) {
     # allow for spinning cluster up once from a parent function
@@ -190,9 +190,10 @@ check_response <- function(resp, text) {
   }
 }
 
-convert_row_to_tei <- function(row, te_id, attribute_map) {
+convert_row_to_tei <- function(row, program_data, attribute_map, enrollment=T, date_map) {
   # requires at least a column called "orgUnit" for enrollment site
   # plus any attributes defined in conf
+  # program_data is the api response with details from the api
   orgUnit <- row$orgUnit %>% as.character()
   # row %<>% as.character()
   attributes <-  data.frame('value' = row[names(attribute_map)] %>% as.character(), stringsAsFactors = F)
@@ -202,8 +203,17 @@ convert_row_to_tei <- function(row, te_id, attribute_map) {
   for (i in 1:nrow(attributes)) {
     attribute_list %<>% append(list(list('attribute' = attributes$attribute[i], 'value' = attributes$value[i])))
   }
+  tei <- list('trackedEntity' = te_id, 'orgUnit' = orgUnit, 'attributes' = attribute_list)
   
-  return(list('trackedEntity' = te_id, 'orgUnit' = orgUnit, 'attributes' = attribute_list))
+  if (enrollment) {
+    enrollment <- list('enrollments' = list('program' = program_data$id,
+                                            'orgUnit' = row$orgUnit,
+                                            'enrollmentDate' = row[date_map[date_map == 'enrollmentDate']],
+                                            'incidentDate' = row[date_map[date_map == 'incidentDate']]))
+    tei %<>% append(enrollment)
+  }
+  
+  return(tei)
 }
 
 convert_row_to_enrollment <- function(row, program_data, date_map) {

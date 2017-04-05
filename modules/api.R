@@ -40,13 +40,13 @@ getDHIS2_dataSet <- function(dataSet, orgUnit, start, end, usr, pwd, children="t
 
 }
 
-getDHIS2_Resource <- function(resourceName, usr, pwd, url, add_props=c(), transform_to_df=T) {
+getDHIS2_Resource <- function(resourceName, usr, pwd, url, add_props=c(), transform_to_df=T, query_params=NA) {
   # creates the appropriate url from which to fetch information
   
   resource <- getDHIS2_Request(usr, pwd, 
                                url= paste0(url, resourceName), 
                                add_props = add_props, 
-                               transform_to_df = transform_to_df)
+                               transform_to_df = transform_to_df, query_params = query_params)
   
   
   return(resource)
@@ -54,17 +54,21 @@ getDHIS2_Resource <- function(resourceName, usr, pwd, url, add_props=c(), transf
 
 
 
-getDHIS2_Request <- function(usr, pwd, url, add_props=c(), transform_to_df=T) {
+getDHIS2_Request <- function(usr, pwd, url, add_props=c(), transform_to_df=T, query_params=NA) {
   ## This will take a specific api url for dataElements or categoryOptions, etc
   ## and return a table with all information available.
   ## This only works well for the main resource tables.  Specific data element
   ## or category information is nested, so it's not as well suited. 
-  
+  ## If query_params is defined, add_props will be ignored, this allows for more complex
+  ## endpoint operations
   if (length(add_props)>0) {add_props <- paste0(",",add_props, collapse='')}
   
-  url <- paste0(url, '.json?fields=displayName,id,shortName,code',add_props, '&paging=false') # we dont' want to page the file
+  if (!is.na(query_params)) params <- query_params
+  else params <- paste0("fields=displayName,id,shortName,code,",add_props)
+  
+  url <- paste0(url, '.json?',params, '&paging=false') # we dont' want to page the file
   req <- GET(url, authenticate(usr, pwd, type='basic'), accept_json()) # hit the server
-  req_content <- content(req)[[1]] # take the response data from the info we got back from the server
+  req_content <- content(req)[[ifelse(grepl('query', url), 'rows', 1)]] # take the response data from the info we got back from the server, query returns in a different spot
   
   if (transform_to_df) {
     # build the table that as as many rows as there are options and has as many columns as each option contains

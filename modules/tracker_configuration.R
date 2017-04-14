@@ -55,7 +55,7 @@ uploadDHIS2_trackedEntityInstances <- function(df, program_name, usr, pwd, url, 
     # make the initial payloads
 
     # things can time out if trying to upload a lot of data at once
-    resps <- foreach(i=550:nrow(df), .combine=append) %dopar% {
+    resps <- foreach(i=1:nrow(df), .combine=append) %dopar% {
       cat(sprintf("-------- %s -----------\n", i))
       response <- create_TEI_and_Enrollment(df[i,], program_data, attribute_map, date_map, usr, pwd, url)
       return(response)
@@ -108,7 +108,7 @@ map_trackedEntityAttributes <- function(df, program_data, usr, pwd, url) {
   return(program_ids)
 }
 
-createDHIS2_trackedEntityInstances <- function(df, program_data, attribute_map, date_map, parallel=T, n_core=detectCores(), source_files='', cl) {
+createDHIS2_trackedEntityInstances <- function(df, program_data, attribute_map, enrollment=T, date_map, parallel=T, n_core=detectCores(), source_files='', cl) {
   # convert a whole dataframe with one row per trackedEntityInstance into payloads for dhis2
   if (parallel) {
     # allow for spinning cluster up once from a parent function
@@ -118,14 +118,14 @@ createDHIS2_trackedEntityInstances <- function(df, program_data, attribute_map, 
     }
     
     payloads <- foreach(i=1:nrow(df), .combine = append) %dopar% {
-      list(convert_row_to_tei(df[i,], te_id, attribute_map))
+      list(convert_row_to_tei(df[i,], program_data, attribute_map, date_map=date_map))
     }
     if (stop_clust) stopCluster(cl)
   }
   else {
     # not sure how to dynamically substitute special command %dopar%.  This is not DRY, but it works for now.
     payloads <- foreach(i=1:nrow(df), .combine = append) %do% {
-      list(convert_row_to_tei(df[i,], te_id, attribute_map))
+      list(convert_row_to_tei(df[i,], program_data, attribute_map, date_map=date_map))
     }
   }
   return(ifelse(length(payloads)>1, list('trackedEntityInstances' = payloads), payloads))
@@ -203,13 +203,13 @@ convert_row_to_tei <- function(row, program_data, attribute_map, enrollment=T, d
   for (i in 1:nrow(attributes)) {
     attribute_list %<>% append(list(list('attribute' = attributes$attribute[i], 'value' = attributes$value[i])))
   }
-  tei <- list('trackedEntity' = te_id, 'orgUnit' = orgUnit, 'attributes' = attribute_list)
+  tei <- list('trackedEntity' = program_data$trackedEntity$id, 'orgUnit' = orgUnit, 'attributes' = attribute_list)
   
   if (enrollment) {
     enrollment <- list('enrollments' = list('program' = program_data$id,
                                             'orgUnit' = row$orgUnit,
-                                            'enrollmentDate' = row[date_map[date_map == 'enrollmentDate']],
-                                            'incidentDate' = row[date_map[date_map == 'incidentDate']]))
+                                            'enrollmentDate' = row[names(date_map)[date_map == 'enrollmentDate']],
+                                            'incidentDate' = row[names(date_map)[date_map == 'incidentDate']]))
     tei %<>% append(enrollment)
   }
   

@@ -10,27 +10,33 @@ library(foreach)
 
 
 ## GET ------------------------------------------------------------------------------------
-getDHIS2_dataSet <- function(dataSet, orgUnit, start, end, usr, pwd, children="true", url, type='csv') {
+getDHIS2_dataSet <- function(dataSet, orgUnit, start, end, usr, pwd, url, children="true", df_output=T, lookup_names=T) {
   # download the requested data set
-  # lookup the data set and org unit
-  dataSet_table <- getDHIS2_Resource('dataSets', usr, pwd, url)
-  dataSet <- dataSet_table$id[dataSet_table$displayName == dataSet]
-  if (length(dataSet) == 0) {stop('Check dataSet name')}
+  if (lookup_names) {
+    # lookup the data set and org unit if ids are not provided
+    dataSet_table <- getDHIS2_Resource('dataSets', usr, pwd, url)
+    dataSet <- dataSet_table$id[dataSet_table$displayName == dataSet]
+    if (length(dataSet) == 0) {stop('Check dataSet name')}
+    
+    orgUnit_table <- getDHIS2_Resource('organisationUnits', usr, pwd, url)
+    orgUnit <- orgUnit_table$id[orgUnit_table$displayName == orgUnit]
+    if (length(orgUnit) ==0) {stop('Check orgUnit name')}
+    
+  }
+  # otherwise continue assuming we already have id values for dataset and orgunit
   
-  orgUnit_table <- getDHIS2_Resource('organisationUnits', usr, pwd, url)
-  orgUnit <- orgUnit_table$id[orgUnit_table$displayName == orgUnit]
-  if (length(orgUnit) ==0) {stop('Check orgUnit name')}
-  
+
   # build the url
-  url <- paste0(url, 'dataValueSets.',type,'?dataSet=',dataSet,'&orgUnit=',orgUnit,'&startDate=',start, '&endDate=',end,'&children=',children)
+  url <- paste0(url, 'dataValueSets.json?dataSet=',dataSet,'&orgUnit=',orgUnit,'&startDate=',start, '&endDate=',end,'&children=',children)
   
   resp <- GET(url, authenticate(usr, pwd, 'basic'))
   
   cat('Status:', resp$status_code, '\n')
   
-  if (type=='csv') {
-    resp <- content(resp,'parsed', 'text/csv')
-    names(resp) <- c('dataElement', 'period', 'orgUnit', 'categoryOptionCombo', 'attributeOptionCombo', 'value', 'storedBy', 'lastUpdated', 'comment', 'followup')
+  if (df_output & length(content(resp)) > 0) {
+    # the csv export option seems to have broken, so this will have to replace it. 
+    resp <- content(resp)$dataValues
+    resp <- list_to_df(lapply(resp, function(x) as.data.frame.list(x)))
     return(resp)
   } 
   else {
@@ -54,7 +60,7 @@ getDHIS2_Resource <- function(resourceName, usr, pwd, url, add_props=c(), transf
 
 
 
-getDHIS2_Request <- function(usr, pwd, url, add_props=c(), transform_to_df=T, query_params=NA) {
+getDHIS2_Request <- function(usr, pwd, url, add_props=c(), transform_to_df=T, query_params=NA, ret_content=T) {
   ## This will take a specific api url for dataElements or categoryOptions, etc
   ## and return a table with all information available.
   ## This only works well for the main resource tables.  Specific data element
@@ -68,35 +74,41 @@ getDHIS2_Request <- function(usr, pwd, url, add_props=c(), transform_to_df=T, qu
   
   url <- paste0(url, '.json?',params, '&paging=false') # we dont' want to page the file
   req <- GET(url, authenticate(usr, pwd, type='basic'), accept_json()) # hit the server
-  req_content <- content(req)[[ifelse(grepl('query', url), 'rows', 1)]] # take the response data from the info we got back from the server, query returns in a different spot
-  
-  if (transform_to_df) {
-    # build the table that as as many rows as there are options and has as many columns as each option contains
-    # this is confusing.  for example: if the response returns 110 data elements, the table will have 110 rows
-    # then, each data element has 5 components, so we'll make 5 columns and populate the table accordingly
-    output <- data.frame(matrix(nrow=length(req_content), ncol=0)) 
-    if (length(req_content) == 0) {
-      output <- data.frame(matrix(nrow=0, ncol=2))
-      names(output) <- c('displayName', 'id')
+  if (ret_content) {
+    req_content <- content(req)[[ifelse(grepl('query', url), 'rows', 1)]] # take the response data from the info we got back from the server, query returns in a different spot
+    
+    if (transform_to_df) {
+      # build the table that as as many rows as there are options and has as many columns as each option contains
+      # this is confusing.  for example: if the response returns 110 data elements, the table will have 110 rows
+      # then, each data element has 5 components, so we'll make 5 columns and populate the table accordingly
+      output <- data.frame(matrix(nrow=length(req_content), ncol=0)) 
+      if (length(req_content) == 0) {
+        output <- data.frame(matrix(nrow=0, ncol=2))
+        names(output) <- c('displayName', 'id')
+      }
+      else {
+        for (i in 1:length(req_content)) { # look at each resource element in the response
+          # some elements have codes, some don't. this causes problems.
+          row <- unlist(req_content[[i]])
+          for (e in 1:length(row)) {
+            output[i,names(row)[e]] <-  row[e] # 'unlist' it, so it's just a vector of values and stick it into that row
+          }
+        }  
+        # names(output) <- names(req_content[[1]]) # give it the names from the server
+        
+      }
     }
     else {
-      for (i in 1:length(req_content)) { # look at each resource element in the response
-        # some elements have codes, some don't. this causes problems.
-        row <- unlist(req_content[[i]])
-        for (e in 1:length(row)) {
-          output[i,names(row)[e]] <-  row[e] # 'unlist' it, so it's just a vector of values and stick it into that row
-        }
-      }  
-      # names(output) <- names(req_content[[1]]) # give it the names from the server
-      
+      output <- req_content
     }
+    
+    
+    return(output)
   }
   else {
-    output <- req_content
+    return(req)
   }
-  
 
-  return(output)
 }
 
 getDHIS2_ResourceTable <- function(usr, pwd, url) {

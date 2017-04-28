@@ -652,13 +652,7 @@ transferDHIS2_data <- function(usr.from, pwd.from, url.from, usr.to, pwd.to, url
     cat('Successfully matched!\n')
     
   }
-  
-  # if (!is.na(existing_upload_file)) {
-  #   x <- read.csv(existing_upload_file, stringsAsFactors = F)
-  #   n <- nrow(from.ds)
-  #   from.ds <- from.ds[!(from.ds$id %in% x$id),]
-  #   cat('Skipping', n - nrow(from.ds), 'dataSets for download\n')
-  # }
+
   
   for (i in 1:nrow(from.ds)) {
     if (from.ds$displayName[i] != 'Test') {
@@ -667,8 +661,7 @@ transferDHIS2_data <- function(usr.from, pwd.from, url.from, usr.to, pwd.to, url
       print(from.ds$displayName[i])
       d <- data.frame()
       for (org in parent_ous){
-        sub <- tryCatch(x <- getDHIS2_dataSet(from.ds$id[i], org, startDate, endDate, usr.from, pwd.from, children='true', url.from, lookup_names = F), 
-                        error = function(e) print(from.ds$displayName[i], 'failed.'), x)
+        sub <- try(getDHIS2_dataSet(from.ds$id[i], org, startDate, endDate, usr.from, pwd.from, children='true', url.from, lookup_names = F))
         # Sys.sleep(5)
         if (is.data.frame(sub)) {
           d <- rbind.fill(d, sub)

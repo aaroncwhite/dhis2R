@@ -136,16 +136,12 @@ calcSplits <- function(df, splitBy) {
 }
 
 # LIST TO DATA FRAME -------------------------------------------------------------
-list_to_df <- function(list_obj, verb=F) {
+list_to_df <- function(list_obj) {
   # take a single level list object with all of the same type (not nested)
   # and convert to a data frame.
-  new_df <- data.frame()
-  for (m in 1:length(list_obj)) {
-    if (verb==T) {
-      print(m)
-    }
-    new_df <- rbind.fill(new_df, list_obj[[m]])
-  }
+  list_obj <- lapply(list_obj, as.data.frame)
+  new_df <- as.data.frame(rbind.fill.matrix(list_obj))
+  
   return(new_df)
 }
 

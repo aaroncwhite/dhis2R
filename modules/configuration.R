@@ -637,6 +637,8 @@ transferDHIS2_data <- function(usr.from, pwd.from, url.from, usr.to, pwd.to, url
   from.ds <- getDHIS2_Resource('dataSets', usr.from, pwd.from, url.from, 'periodType')
   upload_results <- list()
   
+  orgUnits.dest <- getDHIS2_Resource('organisationUnits', usr, pwd, url)
+  
   if (is.null(parent_ous)) {
     cat('Trying to auto-match organisationUnits\n')
     # if no parent orgUnits defined, try to intuit by matching the highest level units for each system
@@ -687,7 +689,7 @@ transferDHIS2_data <- function(usr.from, pwd.from, url.from, usr.to, pwd.to, url
         # trim down to just orgUnits in our system
         d <- d[d$orgUnit %in% orgUnits.dest$id,]
 
-        write.csv(d, paste0('temp/', from.ds$displayName[i], ".csv"), row.names = F)
+        write.csv(d, paste0('temp/', gsub("\\/", "-", from.ds$displayName[i]), ".csv"), row.names = F)
       }
     }
   }

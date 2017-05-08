@@ -10,3 +10,6 @@ if(length(install) == 0) {warning('It seems all the packages you need are instal
 install <- necessary[!(necessary %in% installed.packages()[,'Package'])]
 
 install.packages(install)
+
+
+print('If you have not installed Java, please do so now.  XLConnect depends on it.')

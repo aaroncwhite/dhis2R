@@ -224,7 +224,7 @@ patchDHIS2_metaData <- function(upload, id, obj_type, usr, pwd, url, verbose=T) 
   # you must already have the appropriate href.  this will update only the named
   # elements sent in the payload. 
   
-  if (verbose==T) cat('Updating')
+  if (verbose==T) cat('Updating\n')
   req <- PATCH(paste0(url, type, '/', id), authenticate(usr, pwd), body= upload,accept_json())
   
   flush.console()

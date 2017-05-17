@@ -87,6 +87,38 @@ cloneDHIS2_objects <- function(obj_type, usr.from, pwd.from, url.from, usr.to, p
   
 }
 
-mod_element <- function(element, prefix, id=NULL) {
+mod_element <- function(element, prefix='', id=NULL) {
+  # for transferring metadata from one dhis2 to another
+  # need to update and strip out some things
+  # Strip: access, ownership, userdata
+  # Add prefix if exists
+  # Make source id value code value for destination
+  # If id is declared, that will overwrite the object id (for use with existing objects)
+  
+  # will this work for elements that do not have a code?
+  
+  
+  # Update code
+  element[['code']] <- element$id
+  
+  # Update/remove id
+  if (!is.null(id)) {
+    element$id <- id
+  }
+  else {
+    element <- element[-grep('id', names(element))]
+  }
+  
+  # Update names/labels
+  for (n in c('name', 'shortName', 'displayName', 'displayShortName')) {
+    element[[n]] <- paste0(prefix, element[[n]])
+  }
+  
+  # strip access, user, ownership. set public access privileges to read only
+  element <- element[-greps(c('user', 'access', 'dataSetElement'), names(element))]
+  
+  element$publicAccess <- 'r--------'
+  
+  return(element)
   
 }

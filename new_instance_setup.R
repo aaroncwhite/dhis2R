@@ -1,6 +1,6 @@
 # Prepare a new R install to have the necessary packages to run the scripts
 necessary <- c('httr', 'magrittr', 'RJSONIO', 'XLConnect','rJava', 'rlist', 'stringr', 'stringi',
-               'doParallel', 'foreach', 'translateR', 'openxlsx', 'htmlTable','plyr', 'RCurl')
+               'doParallel', 'foreach', 'translateR', 'openxlsx', 'htmlTable','plyr', 'RCurl', 'xml2')
 
 install <- necessary[!(necessary %in% installed.packages()[,'Package'])]
 

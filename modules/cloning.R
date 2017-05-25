@@ -1,5 +1,10 @@
 # Cloning functions for one-way sync between a source DHIS2 instance and destination instance
 
+# Object types that are pulled from the system
+.config_objects <- c('categoryOptions', 'categories', 'categoryCombos', 'categoryOptionCombos', 'optionSets', 'attributes', 
+                     'dataElements', 'dataElementGroups', 'dataElementGroupSets', 'indicators', 'indicatorGroups', 'indicatorGroupSets',
+                     'dataSets')
+
 
 cloneDHIS2_data <- function(usr.from, pwd.from, url.from, usr.to, pwd.to, url.to, 
                                parent_ous = NULL, specific_dataSets = NULL, yearly_to_monthly=T,
@@ -77,48 +82,81 @@ cloneDHIS2_data <- function(usr.from, pwd.from, url.from, usr.to, pwd.to, url.to
   # d <- read.csv(d, stringsAsFactors = F)
   resp <- postDHIS2_Values(d[,c('dataElement', 'orgUnit', 'period', 'categoryOptionCombo', 'attributeOptionCombo', 'value')], 1000, usr.to, pwd.to, url.to)
   file.remove('temp/upload.csv')
-  returh(resp)
+  return(resp)
   
 }
 
 
-cloneDHIS2_objects <- function(obj_type, usr.from, pwd.from, url.from, usr.to, pwd.to, url.to, prefix='', update=T) {
-  # Clone the metadata from a resource endpoint into a destination instance
-  
+getDHIS2_metadata <- function(usr, pwd, url, individual_endpoints=T, objects=.config_objects) {
+  # get the entire metadata, with details from a dhis2 instance
+
+  if (individual_endpoints) {
+    # attempt to get the metadata individually. 
+    cat('Using individual endpoints. This will take a little longer.\n')
+
+    metadata <- lapply(objects, function(x) {
+      cat('\r',x, rep(" ", 20))
+      x <- getDHIS2_Resource(x, usr, pwd, url, '*', transform_to_df = F)
+      flush.console()
+      x
+    })
+    names(metadata) <- objects
+    return(metadata)
+  }
+  else {
+    x <- GET(paste0(url, 'metadata?viewType=detailed'), authenticate(usr, pwd), accept_json())
+    
+    if (x$status_code != 200) stop('Something went wrong. Are the credentials correct? If the problem continues
+                                    try setting individual_endpoints=T.')
+    else return(content(x))
+
+  }
+
 }
 
-mod_element <- function(element, prefix='', id=NULL) {
+
+mod_element <- function(element, type, prefix='', id=NULL) {
   # for transferring metadata from one dhis2 to another
   # need to update and strip out some things
   # Strip: access, ownership, userdata
   # Add prefix if exists
   # Make source id value code value for destination
   # If id is declared, that will overwrite the object id (for use with existing objects)
-  
+  config_standard_mods <- list('add_prefix' = c('name', 'displayName', 'description'),
+                               'remove' = c('access', 'user.'), # remove anything related to the former user info
+                               'access' = "r-------")
   # will this work for elements that do not have a code?
   
   
   # Update code
-  element[['code']] <- element$id
+  element[['code']] <- paste0(prefix, element$id)
   
   # Update/remove id
   if (!is.null(id)) {
     element$id <- id
   }
-  else {
-    element <- element[-grep('id', names(element))]
-  }
+  # else {
+  #   element <- element[-grep('id', names(element))]
+  # }
   
   # Update names/labels
-  for (n in c('name', 'shortName', 'displayName', 'displayShortName')) {
+  for (n in c('name', 'displayName', 'description')) {
     element[[n]] <- paste0(prefix, element[[n]])
   }
   
   # strip access, user, ownership. set public access privileges to read only
-  element <- element[-greps(c('user', 'access', 'dataSetElement'), names(element))]
+  element <- element[-greps(c('user', 'access'), names(element))]
   
   element$publicAccess <- 'r--------'
-  
+
   return(element)
   
 }
+
+
+
+
+
+
+
+

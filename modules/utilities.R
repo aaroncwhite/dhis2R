@@ -95,6 +95,43 @@ findColumn_index <- function(find, df, head_message, prompt) {
   return(index)
 }
 
+find_replace <- function(obj, find, replace, ignore = NA) {
+  # recursive function to evaluate a list of lists containing dhis2 metadata
+  # whatever value is passed in for find will be substituted with replace
+  # Evaluates recursively through a list object until it finds locations that 
+  # are not more nested lists, then it attemps to perform the replace operation
+  # Ex. 
+  # If dataElements[[1]]$id == '1', set find = 1, replace = 2
+  # response will be dataElements[[1]]$id == '2'
+  
+  # the replace operation if this is not a list
+  if (!is.list(obj)) { 
+    obj <- gsub(find, replace, obj)
+    return(obj)
+  }
+  # Recurse if this is a list
+  else {
+    # look at all the sub elements and perform the same operation
+    # as long as the length > 0 and the property is not declared in 
+    # ignore
+    
+    for (i in 1:length(obj)) {
+      
+      if (is.na(ignore)) check_ignore <- T
+      else check_ignore <- any(sapply(ignore, function(x) !grepl(x, names(obj[i]))))
+      
+      if (length(obj[[i]]) > 0 & check_ignore) {
+        # replace in place
+        obj[[i]] <- find_replace(obj[[i]], find, replace)
+      }
+      
+    }
+    # return the final modified list
+    return(obj)
+  }
+}
+
+
 # SPLITTING --------------------------------------------------------------------
 calcSplits <- function(df, splitBy) {
   # Used by postDHIS2_Values(), this will split a data frame into 

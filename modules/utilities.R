@@ -95,7 +95,7 @@ findColumn_index <- function(find, df, head_message, prompt) {
   return(index)
 }
 
-find_replace <- function(obj, find, replace, ignore = NA) {
+find_replace <- function(obj, find, replace, ignore = NA, replaced=0) {
   # recursive function to evaluate a list of lists containing dhis2 metadata
   # whatever value is passed in for find will be substituted with replace
   # Evaluates recursively through a list object until it finds locations that 
@@ -122,7 +122,7 @@ find_replace <- function(obj, find, replace, ignore = NA) {
       
       if (length(obj[[i]]) > 0 & check_ignore) {
         # replace in place
-        obj[[i]] <- find_replace(obj[[i]], find, replace)
+        obj[[i]] <- find_replace(obj[[i]], find, replace, ignore=ignore, replaced=replaced)
       }
       
     }

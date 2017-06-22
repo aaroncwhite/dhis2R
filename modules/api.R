@@ -455,6 +455,21 @@ queryDHIS2 <- function(term, term_type, obj_type, usr, pwd, url) {
   
 }
 
+# Credentials
+setDHIS2_credentials <- function() {
+  # set credentials based on a stored file in the base directory called .credentials
+  # this obviously isn't the best/most secure, but it's better than being directly in the file
+  # itself
+  if (!file.exists('.credentials')) stop('No credentials found!  Are they defined in .credentials? See .credentials_template for more.')
+  credentials <- fromJSON('.credentials')
+  instance <- readline(sprintf('Select server credentials (%s):', paste(names(credentials), collapse = ", ")))
+  
+  for (i in 1:length(credentials[[instance]])) {
+    assign(names(credentials[[instance]][i]), unlist(credentials[[instance]][i]), envir = .GlobalEnv)
+  }
+}
+
+
 # DEPRECATED -----------------------------------------------------------------------
 # 
 # createBatch_dataElements <- function(new_elements_df, domainType= 'AGGREGATE', 

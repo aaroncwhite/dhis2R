@@ -10,7 +10,7 @@ createDHIS2_DataSet <- function(name, shortName = NA, description = "", periodTy
   # dataElements should be a character vector with the names of each data element
   # that should be assigned to the dataSet
   
-  if (is.na(shortName)) {shortName <- name} # make sure we have something for short name to post
+  if (is.na(shortName) | is.null(shortName) ) {shortName <- name} # make sure we have something for short name to post
   
   if (suppressWarnings(is.character(dataElements) & length(dataElements) > 0)) { # convert the named data elements
     # to a list object with a parent called 'dataElements' and each child containing the name of 
@@ -36,7 +36,7 @@ createDHIS2_DataElementGroup <- function(name, shortName = NA, aggregationType='
   # returns list for upload using postDHIS2_metaData()
   # dataElements must be a list of object ids in the system. 
   
-  if (is.na(shortName)) {shortName <- name} # make sure we have something for short name to post
+  if (is.na(shortName) | is.null(shortName) ) {shortName <- name} # make sure we have something for short name to post
   
   dataElements <- lapply(dataElements, function(a) list('name' = a))
   
@@ -57,7 +57,7 @@ createDHIS2_DataElement <- function(name, shortName = NA, code="", description="
   # other properties can be passed using other_properties in named list f
   # returns list for upload using postDHIS2_metaData()
   
-  if (is.na(shortName) | nchar(shortName) > 50) {shortName <- name} # make sure we have something for short name to post
+  if (is.na(shortName) | is.null(shortName) | nchar(shortName) > 50) {shortName <- name} # make sure we have something for short name to post
   
   # these are all necessary elements
   upload <- list('name' = name, 'shortName'=stri_sub(shortName, length=50),'code' = code, 'description'=description, 'domainType' = domainType, 'formName'= formName, 'valueType' = valueType, 
@@ -73,7 +73,7 @@ createDHIS2_CategoryCombo <- function(name, categories= NA, shortName = NA, data
   # other properties can be passed using other_properties in named list f
   # returns list for upload using postDHIS2_metaData()
   name <- unname(name, force=T)
-  if (is.na(shortName)) {shortName <- name} # make sure we have something for short name to post
+  if (is.na(shortName) | is.null(shortName) ) {shortName <- name} # make sure we have something for short name to post
 
 
   
@@ -90,12 +90,12 @@ createDHIS2_CategoryCombo <- function(name, categories= NA, shortName = NA, data
   return(upload)
 }
 
-createDHIS2_Category <- function(name, options=c(), shortName = NA, dataDimension='DISAGGREGATION', other_properties=list()) {
+createDHIS2_Category <- function(id, name, options=c(), shortName = NA, dataDimension='DISAGGREGATION', other_properties=list()) {
   # make a list object for upload to DHIS2.  requires a name at least plus options to be combined
   # other properties can be passed using other_properties in named list f
   # returns list for upload using postDHIS2_metaData()
   
-  if (is.na(shortName)) {shortName <- name} # make sure we have something for short name to post
+  if (is.na(shortName) | is.null(shortName) ) {shortName <- name} # make sure we have something for short name to post
   categoryOptions <- list()
   for (o in options) {
     categoryOptions <- append(categoryOptions, list(list('name'= o)))
@@ -106,10 +106,10 @@ createDHIS2_Category <- function(name, options=c(), shortName = NA, dataDimensio
   return(upload)
 }
 
-createDHIS2_CategoryOption <- function(name, add_props=list()) {
+createDHIS2_CategoryOption <- function(id, name, add_props=list()) {
   # returns list for upload using postDHIS2_metaData()
   # this one is pretty simple
-  up <- list('name'=name)
+  up <- list('name'=name, 'id' = id)
   up <- append(up, add_props)
   return(up)
 }
@@ -118,7 +118,7 @@ createDHIS2_CategoryOption <- function(name, add_props=list()) {
 createDHIS2_program <- function(name, shortName = NA, description = '', trackedEntity, 
                                 trackedEntityAttributes=NA, programType = 'WITH_REGISTRATION',
                                 other_properties= list()) {
-  if (is.na(shortName)) {shortName <- name} # make sure we have something for short name to post
+  if (is.na(shortName) | is.null(shortName) ) {shortName <- name} # make sure we have something for short name to post
   
   payload <- list('name' = name, 'shortName' = shortName, 'description'= description,
                   'trackedEntity' = list('name' = trackedEntity),
@@ -144,7 +144,7 @@ createDHIS2_programStage <- function(name, programId, dataElements = NA, other_p
 createDHIS2_trackedEntityAttribute <- function(name, shortName=NA, aggregationType = 'SUM', 
                                                valueType = 'INTEGER', optionSetId = NA, other_properties=list()) {
   # create a trackedEntityAttribute for use with Tracker programs
-  if (is.na(shortName)) {shortName <- name} # make sure we have something for short name to post
+  if (is.na(shortName) | is.null(shortName) ) {shortName <- name} # make sure we have something for short name to post
   
   payload <- list('name' = name, 'shortName' = shortName, 'valueType' = valueType)
   
@@ -192,7 +192,7 @@ createDHIS2_user <- function(firstName, surname, username, password, userRoles, 
 createDHIS2_OrgUnit <- function(name, shortName=NA, description='', 
                                 openingDate = Sys.Date(), parentId=NA, add_props=list()) {
   # Create an organisation unit in dhis2
-  if (is.na(shortName)) {shortName <- substr(name, 1, 49)} # make sure we have something for short name to post
+  if (is.na(shortName) | is.null(shortName) ) {shortName <- substr(name, 1, 49)} # make sure we have something for short name to post
   
   up <- list('name' = name, 'shortName' = shortName, 
              'description' = description, 'openingDate' = openingDate)

@@ -3,6 +3,12 @@
 # dataframe scraping, or prompts.
 
 # DATA MANIPULATION ----------------------------------------------------------
+make_revalue_map <- function(keys, values) {
+  names(values) <- keys
+  return(values)
+}
+
+
 replaceNames <- function(table, column, idTable) {
   # Use the idTable of x type (dataElement, categoryOption, orgUnit, etc)
   # to overwrite the text values we have with the corresponding id values

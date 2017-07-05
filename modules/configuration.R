@@ -229,11 +229,12 @@ scrapeDHIS2_configFile <- function(filename, usr, pwd, url) {
   options <- catOptions[,-1] %>% .[!is.na(.)] %>% .[!duplicated(.)]
   cOptions <- all_character(data.frame('name' = options, 'id' = NA))
   cOptions <- check_ids(cOptions, 'categoryOptions', usr, pwd, url)
-  
-  cOpt_ids <- getDHIS2_Resource('categoryOptions', usr, pwd, url)
-  cOptions$id <- revalue(cOptions$name, make_revalue_map(cOpt_ids$displayName, cOpt_ids$id), warn_missing = F)
-  cOptions$id[is.na(cOptions$id)]
-  categoryOptions <-  apply(cOptions, 1, function(x) createDHIS2_CategoryOption(x[2], x[1]))
+
+  categoryOptions <-  apply(cOptions, 1, function(x) {
+    obj <- createDHIS2_CategoryOption(x[2], x[1])
+    if (x['existing']) obj %<>% add_href('categoryOptions', url)
+    obj
+    })
   
   
   
@@ -243,14 +244,18 @@ scrapeDHIS2_configFile <- function(filename, usr, pwd, url) {
   catOptions[,-1] %<>% apply(2, function(x) revalue(x, opts, warn_missing=F))
   
   # get new ids
-  catOptions$id <- getDHIS2_systemIds(nrow(catOptions), usr, pwd, url)
   names(catOptions)[1] <- 'name' 
+  catOptions$id <- NA
+  catOptions <- check_ids(catOptions, 'categories', usr, pwd, url)
   
+    
   # convert to lists
   categories <- list()
-  opts <- greps(c('id', 'name'), names(catOptions))
+  opts <- greps(c('id', 'name', 'existing'), names(catOptions))
   for (i in 1:nrow(catOptions)) {
-    categories %<>% append(list(createDHIS2_Category(catOptions[i, 'id'], catOptions[i, 'name'], catOptions[i, -opts])))
+    obj <- createDHIS2_Category(catOptions[i, 'id'], catOptions[i, 'name'], catOptions[i, -opts])
+    if (catOptions$existing[i]) obj %<>% add_href('categories', url)
+    categories %<>% append(list(obj))
   }
 
   
@@ -276,14 +281,14 @@ scrapeDHIS2_configFile <- function(filename, usr, pwd, url) {
   default_categoryCombo <- getDHIS2_Resource('categoryCombos', usr, pwd, url) %>% .[grep('default', .$displayName), 'id']
   catCombos[,1] <- revalue(catCombos[,1], c('None'='default'), warn_missing = F)
   catCombos[,1][is.na(catCombos[,1])] <- 'default'
-  catCombos$id <- getDHIS2_systemIds(nrow(catCombos), usr, pwd, url)
+  names(catCombos)[1] <- 'name'
+  catCombos <- check_ids(catCombos, 'categoryCombos', usr, pwd, url)
   
   
   catCombos$id[grepl('default', catCombos[,1])] <- default_categoryCombo
   categoryCombo_ids <- catCombos$id # will use this with dataElement creation
 
   catCombos <- catCombos[-grep(default_categoryCombo, catCombos$id),,drop=F]
-  names(catCombos)[1] <- 'name'
   
   cats <- make_revalue_map(catOptions$name, catOptions$id)
   
@@ -292,7 +297,9 @@ scrapeDHIS2_configFile <- function(filename, usr, pwd, url) {
   categoryCombos <- list()
   for(i in 1:nrow(catCombos)) {
     # apply has some weird issues with this, so explicit for loop
-    categoryCombos %<>% append(list(createDHIS2_CategoryCombo(catCombos$id[i], catCombos$name[i], catCombos[i,-c(1, ncol(catCombos))])))
+    obj <- createDHIS2_CategoryCombo(catCombos$id[i], catCombos$name[i], catCombos[i,-c(1, ncol(catCombos))])
+    if (catCombos$existing[i]) obj %<>% add_href('categoryCombos', url)
+    categoryCombos %<>% append(list(obj))
   }
   
   
@@ -300,18 +307,21 @@ scrapeDHIS2_configFile <- function(filename, usr, pwd, url) {
   dataElements <- dataElements[,columns] 
   names(dataElements) <- c('name','shortName','code', 'description', 'valueType', 'aggregationType', 'categoryCombo', 'formName', 'dataSet', 'dataElementGroup')
   dataElements$categoryCombo <- categoryCombo_ids
-  dataElements$id <- getDHIS2_systemIds(nrow(dataElements), usr, pwd, url)
+  dataElements %<>% check_ids('dataElements', usr, pwd, url)
   
   # DATA ELEMENT GROUP
   # import the dataElementGroup names
   deGroups <- readWorkbook(filename,  'Data Element Groups')
   names(deGroups) <- c('name', 'shortName', 'aggregationType', 'description')
-  deGroups$id <- getDHIS2_systemIds(nrow(deGroups), usr, pwd, url)
+  deGroups %<>% check_ids('dataElementGroups', usr, pwd, url)
+
   # now find the matching dataElements from that page
   dataElementGroups <- list()
   for (deg in 1:nrow(deGroups)) {
     de <- dataElements$id[grep(deGroups$name[deg], dataElements$dataElementGroup)]
-    dataElementGroups %<>% append(list(createDHIS2_DataElementGroup(deGroups$id[deg], deGroups$name[deg], dataElements = de)))
+    obj <- createDHIS2_DataElementGroup(deGroups$id[deg], deGroups$name[deg], dataElements = de)
+    if (deGroups$existing[deg]) obj %<>% add_href('dataElementGroups', url)
+    dataElementGroups %<>% append(list(obj))
   }
   
   dataElements$dataElementGroup %<>% revalue(make_revalue_map(deGroups$name, deGroups$id), warn_missing=F)
@@ -320,22 +330,26 @@ scrapeDHIS2_configFile <- function(filename, usr, pwd, url) {
   # this one is going to be slightly different as we need information on two pages
   dSets <- readWorkbook(filename,  'Dataset')
   names(dSets) <- c('name','description', 'frequency', 'ou_level', 'attribute', 'catCombo')
-  dSets$id <- getDHIS2_systemIds(nrow(dSets), usr, pwd, url)
+  dSets %<>% check_ids('dataSets', usr, pwd, url)
   
   dataSets <- list()
   for (ds in 1:nrow(dSets)) {
     de <- dataElements$id[grep(dSets$name[ds], dataElements$dataSet)]
-    dataSets %<>% append(list(createDHIS2_DataSet(dSets$id[ds], dSets$name[ds], periodType = dSets$frequency, description= dSets$description, dataElements = de)))
+    obj <- createDHIS2_DataSet(dSets$id[ds], dSets$name[ds], periodType = dSets$frequency, description= dSets$description, dataElements = de)
+    if (dSets$existing[ds]) obj %<>% add_href('dataSets', url)
+    dataSets %<>% append(list(obj))
   }
   
   dataElements$dataSet %<>% revalue(make_revalue_map(dSets$name, dSets$id), warn_missing=F)
   
   de <- list()
   for (i in 1:nrow(dataElements)) {
-    de %<>% append(list(createDHIS2_DataElement(dataElements$id[i], dataElements$name[i], dataElements$shortName[i],
+    obj <- createDHIS2_DataElement(dataElements$id[i], dataElements$name[i], dataElements$shortName[i],
                                                 dataElements$code[i], dataElements$description[i], valueType=dataElements$valueType[i],
                                                 aggregationType = dataElements$aggregationType[i], categoryCombo= dataElements$categoryCombo[i],
-                                                formName= dataElements$formName[i])))
+                                                formName= dataElements$formName[i])
+    if (dataElements$existing[i]) obj %<>% add_href('dataElements', url)
+    de %<>% append(list(obj))
   }
   dataElements <- de
   
@@ -360,12 +374,15 @@ scrapeDHIS2_configFile <- function(filename, usr, pwd, url) {
 
 check_ids <- function(scraped_obj, obj_type, usr, pwd, url) {
     # requires a name and id field in scraped_obj
-    obj_resource <- getDHIS2_Resource(obj_type, usr, pwd, url)
-    scraped_obj$id <- revalue(scraped_obj$name, make_revalue_map(obj_resource$displayName, obj_resource$id), warn_missing = F)
-    if (any(is.na(scraped_obj$id))) {
-        scraped_obj$id[is.na(scraped_obj$id)] <- getDHIS2_systemIds(table(is.na(scraped_obj$id))[1], usr, pwd, url)
-    }
-    return(scraped_obj)
+  if (!any(grepl('id', names(scraped_obj)))) scraped_obj$id <- NA
+  
+  obj_resource <- getDHIS2_Resource(obj_type, usr, pwd, url)
+  scraped_obj$id <- revalue(scraped_obj$name, make_revalue_map(obj_resource$displayName, obj_resource$id), warn_missing = F)
+  scraped_obj$existing <- T
+  if (any(is.na(scraped_obj$id))) {
+      scraped_obj$id[is.na(scraped_obj$id)] <- getDHIS2_systemIds(table(is.na(scraped_obj$id))[1], usr, pwd, url)
+  }
+  return(scraped_obj)
 }
 
 cloneDHIS2_userRole <- function(id, usr, pwd, url, new_name) {
@@ -391,12 +408,14 @@ uploadDHIS2_metaData <- function(config, usr, pwd, url) {
     if (length(config[[x]]) > 1) {
       lapply(config[[x]], function(y) {
         cat('\r', y$name, rep(' ', 50)) 
-        postDHIS2_metaData(y, x, usr, pwd, url) 
+        if (any(grepl('href', names(y)))) putDHIS2_metaData(y, usr, pwd, y$href)
+        else postDHIS2_metaData(y, x, usr, pwd, url) 
       })
     }
     else {
       cat('\r', config[[x]][[1]]$name, rep(' ', 50)) 
-      postDHIS2_metaData(config[[x]][[1]], x, usr, pwd, url)
+      if (any(grepl('href', names(config[[x]][[1]])))) putDHIS2_metaData(config[[x]][[1]], usr, pwd, config[[x]][[1]]$href)
+      else postDHIS2_metaData(config[[x]][[1]], x, usr, pwd, url)
     }
   })
   

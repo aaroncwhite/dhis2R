@@ -97,8 +97,8 @@ createDHIS2_Category <- function(id, name, options=c(), shortName = NA, dataDime
   
   if (is.na(shortName) | is.null(shortName) ) {shortName <- name} # make sure we have something for short name to post
   categoryOptions <- list()
-  for (o in options) {
-    categoryOptions <- append(categoryOptions, list(list('name'= o)))
+  for (o in options[!is.na(options)]) {
+    categoryOptions <- append(categoryOptions, list(list('id'= o)))
   }
   
   upload <- list('name' = name, 'shortName'=shortName, 'categoryOptions'= categoryOptions, 'dataDimensionType' = dataDimension)

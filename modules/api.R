@@ -215,6 +215,33 @@ getDHIS2_systemIds <- function(n_ids, usr, pwd, url) {
   return(ids)
 }
 
+getDHIS2_metadata <- function(usr, pwd, url, individual_endpoints=T, objects=.config_objects) {
+  # get the entire metadata, with details from a dhis2 instance
+
+  if (individual_endpoints) {
+    # attempt to get the metadata individually. 
+    cat('Using individual endpoints. This will take a little longer.\n')
+
+    metadata <- lapply(objects, function(x) {
+      cat('\r',x, rep(" ", 20))
+      x <- getDHIS2_Resource(x, usr, pwd, url, '*', transform_to_df = F)
+      flush.console()
+      x
+    })
+    names(metadata) <- objects
+    return(metadata)
+  }
+  else {
+    x <- GET(paste0(url, 'metadata?viewType=detailed'), authenticate(usr, pwd), accept_json())
+    
+    if (x$status_code != 200) stop('Something went wrong. Are the credentials correct? If the problem continues
+                                    try setting individual_endpoints=T.')
+    else return(content(x))
+
+  }
+
+}
+
 # PUT ----------------------------------------------------------------------------------------
 putDHIS2_metaData <- function(upload, usr, pwd, url, verbose=T) {
   # put meta data to DHIS2 instance.  this is for updating existing objects

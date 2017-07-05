@@ -115,7 +115,7 @@ getDHIS2_metadata <- function(usr, pwd, url, individual_endpoints=T, objects=.co
 }
 
 
-mod_element <- function(element, type, prefix='', id=NULL) {
+mod_element <- function(element, type, prefix='', id=NULL, access='r--------') {
   # for transferring metadata from one dhis2 to another
   # need to update and strip out some things
   # Strip: access, ownership, userdata
@@ -147,7 +147,7 @@ mod_element <- function(element, type, prefix='', id=NULL) {
   # strip access, user, ownership. set public access privileges to read only
   element <- element[-greps(c('user', 'access'), names(element))]
   
-  element$publicAccess <- 'r--------'
+  element$publicAccess <- access
 
   return(element)
   

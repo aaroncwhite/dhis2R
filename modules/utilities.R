@@ -4,8 +4,9 @@
 
 # DATA MANIPULATION ----------------------------------------------------------
 make_revalue_map <- function(keys, values) {
+  values %<>% as.character()
   names(values) <- keys
-  return(as.character(values))
+  return(values)
 }
 
 

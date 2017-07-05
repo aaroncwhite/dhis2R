@@ -204,6 +204,17 @@ getDHIS2_translationValues <- function(obj_id, target_lang, usr, pwd, url) {
   return(response)
 }
 
+getDHIS2_systemIds <- function(n_ids, usr, pwd, url) {
+  # Get a set of unique id values for use when uploading
+  ids <- GET(paste0(url, 'system/id?limit=', n_ids), authenticate(usr, pwd), accept_json()) # this is all the functions really do
+  
+  if(ids$status_code != 200) stop('Something went wrong.  Are your credentials correct?') # 200 is what we want
+  
+  ids <- content(ids) # parse out the response value from dhis2
+  ids <- unlist(ids$codes)
+  return(ids)
+}
+
 # PUT ----------------------------------------------------------------------------------------
 putDHIS2_metaData <- function(upload, usr, pwd, url, verbose=T) {
   # put meta data to DHIS2 instance.  this is for updating existing objects
@@ -237,7 +248,7 @@ postDHIS2_metaData <- function(obj,obj_type, usr, pwd, url, verbose=T) {
   # post meta data to DHIS2 instance
   # find the correct resource link
 
-  req <- POST(paste0(url,obj_type), authenticate(usr, pwd), body= obj, encode='json')
+  req <- POST(paste0(url,obj_type), authenticate(usr, pwd), body= toJSON(obj), content_type_json(), accept_json())
     
   flush.console()
   return(req)

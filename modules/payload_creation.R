@@ -68,24 +68,23 @@ createDHIS2_DataElement <- function(name, shortName = NA, code="", description="
   return(upload)
 }
 
-createDHIS2_CategoryCombo <- function(name, categories= NA, shortName = NA, dataDimension= 'DISAGGREGATION',other_properties=list()) {
+createDHIS2_CategoryCombo <- function(id, name, categories, shortName = NA, dataDimension= 'DISAGGREGATION',other_properties=list()) {
   # make a list object for upload to DHIS2.  requires a name at least plus options to be combined
   # other properties can be passed using other_properties in named list f
   # returns list for upload using postDHIS2_metaData()
   name <- unname(name, force=T)
   if (is.na(shortName) | is.null(shortName) ) {shortName <- name} # make sure we have something for short name to post
-
+  
 
   
-  upload <- list('name' = name, 'shortName'=shortName, 'dataDimensionType' = dataDimension)
+  upload <- list('id' = id, 'name' = name, 'shortName'=shortName, 'dataDimensionType' = dataDimension)
   
-  if (!is.na(categories)) {
-    category_list <- list()
-    for (cat in categories) {
-      category_list <- append(category_list, list(list('name'= cat)))
-    }
-    upload <- append(upload, list('categories' = category_list))
+  categories %<>% .[!is.na(.)]
+  category_list <- list()
+  for (cat in categories) {
+    category_list <- append(category_list, list(list('id'= cat)))
   }
+  upload <- append(upload, list('categories' = category_list))
   upload <- append(upload, other_properties)
   return(upload)
 }

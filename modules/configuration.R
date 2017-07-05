@@ -368,15 +368,21 @@ cloneDHIS2_userRole <- function(id, usr, pwd, url, new_name) {
 }
 
 # METADATA UPLOAD BASE FUNCTION --------------------------------------------------------------------
-uploadDHIS2_aggregateMetaData <- function(config, usr, pwd, url) {
+uploadDHIS2_metaData <- function(config, usr, pwd, url) {
   # take objects from scrapeDHIS2_configFile() and create the appropriate configuration in the system.  
   # this performs no sanity checks and relies on dhis2 to handle the import process
   
   req <- lapply(names(config), function(x) {
-    lapply(config[[x]], function(y) {
-      cat('\r', y$name, rep(' ', 50)) 
-      postDHIS2_metaData(y, x, usr, pwd, url) 
-    })
+    if (length(config[[x]]) > 1) {
+      lapply(config[[x]], function(y) {
+        cat('\r', y$name, rep(' ', 50)) 
+        postDHIS2_metaData(y, x, usr, pwd, url) 
+      })
+    }
+    else {
+      cat('\r', config[[x]][[1]]$name, rep(' ', 50)) 
+      postDHIS2_metaData(config[[x]][[1]], x, usr, pwd, url)
+    }
   })
   
   return(req)

@@ -368,120 +368,16 @@ cloneDHIS2_userRole <- function(id, usr, pwd, url, new_name) {
 }
 
 # METADATA UPLOAD BASE FUNCTION --------------------------------------------------------------------
-uploadDHIS2_metaData <- function(obj, obj_type, usr, pwd, url,overwrite=F, prompt=T, verbose=F) {
-  # take objects from scrapeDHIS2_configFile() and create the appropriate configuration in the system.  this will check if the settings already exist in 
-  # the system and will skip those unless overwrite=T.  if prompt or verbose are set to T, lots of text will output.  Otherwise, existing configs 
-  # will be overwritten automatically and a simple status output will display.  THIS COULD BE DANGEROUS IF YOU ARE NOT CERTAIN THERE ARE NO OVERLAPPING CONFIGURATIONS
-  cat('------------------ Starting',toupper(obj_type),'Upload -------------------------\n')
-  # check category combinations that exist in the system
-  existingObjects <- getDHIS2_Resource(obj_type, usr, pwd, url)
-  # set up some empty counts and objects to return
-  req <- list('updated' = list(), 'uploaded' = list(), 'skipped' = list())
+uploadDHIS2_aggregateMetaData <- function(config, usr, pwd, url) {
+  # take objects from scrapeDHIS2_configFile() and create the appropriate configuration in the system.  
+  # this performs no sanity checks and relies on dhis2 to handle the import process
   
-  # check categories per combination are the same
-  
-  for (cc in 1:nrow(obj)) {
-    # create the upload object.  We can take advantage of R's switch() function and use obj_type 
-    # to determine how it will structure the upload object
-    
-    upload <- switch(obj_type,
-                     'dataElements' = ({
-                       dataElement <- obj[cc,,drop=F] # the row we're looking at
-                       de_name <- dataElement[1,1] # the name
-                       createDHIS2_DataElement(de_name, shortName = dataElement$shortName, aggregationType = dataElement$aggregationType,
-                                               valueType = dataElement$valueType, categoryCombo = dataElement$categoryCombo, 
-                                               description = dataElement$description, formName= dataElement$formName, 
-                                               code= dataElement$code)
-                     }),
-                     'categoryCombos' = ({
-                       catCombo <- obj[cc,] # the row we're looking at
-                       cat_name <- catCombo[1,1] # the first column is the name
-                       if (cat_name != 'default') {
-                         cats <- catCombo[-1] %>% .[!is.na(.)] %>% .[!duplicated(.)] # remove the name column and any NA columns, for good measure, remove dupes
-                         createDHIS2_CategoryCombo(cat_name, cats, shortName = cat_name) # make the 
-                       }
-                       else {
-                         list('name' = 'default')
-                       }
-
-                     }),
-                     'categories' = ({ # this follows the same format as above
-                       category <- obj[cc,]
-                       cat_name <- category[1,1]
-                       opts <- category[,-1] %>% .[!is.na(.)] %>% .[!duplicated(.)]
-                       createDHIS2_Category(cat_name, opts, shortName = cat_name)
-                     }),
-                     'categoryOptions' = ({
-                       createDHIS2_CategoryOption(as.character(obj[cc,1]))
-                     }),
-                     'dataSets' = ({
-                       ds <- obj[cc,]
-                       createDHIS2_DataSet(ds$dataSet, dataElements = unlist(ds$dataElements), periodType = ds$frequency)
-                     }),
-                     'dataElementGroups' = ({
-                       deg <- obj[cc,,drop=F]
-                       createDHIS2_DataElementGroup(deg$name, deg$shortName, deg$aggregationType, dataElements= unlist(deg$dataElements))
-                     }),
-                     'translations' = ({
-                       trans <- obj[cc,]
-                       createDHIS2_translation(trans$value, trans$property, trans$locale, trans$objectId, trans$className)
-                     }),
-                     'users' = ({
-                       user <- obj[cc,]
-                       createDHIS2_user(user$firstName, user$surname, user$username, user$password, user$userRole, user$organisationUnit)
-                       
-                     })
-    )
-    
-    if (upload$name %in% existingObjects$displayName == TRUE & overwrite == T & upload$name != "default" & obj_type != 'categoryOptions') {
-      # does this name already exist in the system? if it does, 
-      # and overwrite == T, prompt for permission on each catCombo that already
-      # exists
-      # get the id
-      id <- existingObjects$id[existingObjects$displayName %in% upload$name] 
-      # download the detailed information on the category combination
-      # get the ids of the attached categories
-      
-      if (verbose == T | prompt == T) {
-        object_relationship <- getDHIS2_objectChildren(id, obj_type, usr, pwd, url)
-        # do the ids match? if so, answer will be TRUE
-        cat("\nObject with that name already exists and has the following options:\n")
-        print(object_relationship$parent)
-        cat('Attempted children to upload:\n')
-        print(object_relationship$children)
-        ifelse(prompt==T, resp <- confirmAction('Overwrite existing configuration? Y/N: '), resp <- "Y")
-      }
-      else {
-        resp <- "Y"
-      }
-      if (resp == "Y") {
-        resp <- content(putDHIS2_metaData(upload, usr, pwd, paste0(url, obj_type, '/',id), verbose=verbose))
-        req$updated %<>% append(., list(list('name' = upload$name, 'response' = list(resp))))
-      }
-      
-    }
-    else if (upload$name %in% existingObjects$displayName == FALSE) {
-      # any categories that DO NOT exist at all will always be uploaded
-      resp <- content(postDHIS2_metaData(upload, obj_type=obj_type, usr, pwd, url, verbose=verbose), type = 'application/json')
-      req$uploaded %<>% append(., list(list('name' = upload$name, 'response' = list(resp))))
-    }
-    else {
-      if (verbose==T) cat("Skipping!")
-      req$skipped %<>% append(., list(list('name' = upload$name, 'response' = list(upload))))
-    }
-    Sys.sleep(runif(1, 0, .1))
-    flush.console()
-    ifelse(nchar(upload$name) > 40, extend <- "...                             ",extend <- "                                ")
-    print_name <- stri_sub(paste0(stri_sub(upload$name, length=40),extend), length=45)
-    cat('\rCURRENT-->', cc, "|", nrow(obj), '\tObject:', print_name ,'\tTOTALS--> Uploaded:', length(req$uploaded), 'Updated:', length(req$updated), 'Skipped:', length(req$skipped),rep('\t',15))
-    
-    # cat(c('\r',rep('\t',35),'\r'))
-  }
-  cat('\n----------------- Completed',toupper(obj_type),'Upload -------------------------\n')
-  
-  cat("Uploaded", length(req$uploaded), 'objects\n')
-  cat("Updated", length(req$updated), 'already existing objects\n')
-  cat("Skipped", length(req$skipped), 'already existing objects\n\n')
+  req <- lapply(names(config), function(x) {
+    lapply(config[[x]], function(y) {
+      cat('\r', y$name, rep(' ', 50)) 
+      postDHIS2_metaData(y, x, usr, pwd, url) 
+    })
+  })
   
   return(req)
   

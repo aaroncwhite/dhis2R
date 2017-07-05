@@ -61,7 +61,7 @@ createDHIS2_DataElement <- function(id, name, shortName = NA, code="", descripti
   
   # these are all necessary elements
   upload <- list('id' = id, 'name' = name, 'shortName'=stri_sub(shortName, length=50),'code' = code, 'description'=description, 'domainType' = domainType, 'formName'= formName, 'valueType' = valueType, 
-                 'aggregationType' = aggregationType, 'categoryCombo'=list('name' = categoryCombo))
+                 'aggregationType' = aggregationType, 'categoryCombo'=list('id' = categoryCombo))
   
   # these are optional
   upload <- append(upload, other_properties)

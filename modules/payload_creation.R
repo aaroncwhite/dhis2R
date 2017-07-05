@@ -15,7 +15,7 @@ createDHIS2_DataSet <- function(id, name, shortName = NA, description = "", peri
   if (suppressWarnings(is.character(dataElements) & length(dataElements) > 0)) { # convert the named data elements
     # to a list object with a parent called 'dataElements' and each child containing the name of 
     # each dataElement passed originally
-    dataElements <- lapply(dataElements, function(x) list('id' = x))
+    dataElements <- lapply(dataElements, function(x) list('dataElement' = list('id' = x)))
   }
   else {
     dataElements <- list()

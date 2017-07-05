@@ -51,7 +51,7 @@ createDHIS2_DataElementGroup <- function(id, name, shortName = NA, aggregationTy
 }
 
 
-createDHIS2_DataElement <- function(name, shortName = NA, code="", description="", domainType='AGGREGATE', valueType= 'INTEGER', 
+createDHIS2_DataElement <- function(id, name, shortName = NA, code="", description="", domainType='AGGREGATE', valueType= 'INTEGER', 
                                     aggregationType='SUM', categoryCombo='default', formName="", other_properties=list()) {
   # make a list object for upload to DHIS2.  requires a name at least
   # other properties can be passed using other_properties in named list f
@@ -60,7 +60,7 @@ createDHIS2_DataElement <- function(name, shortName = NA, code="", description="
   if (is.na(shortName) | is.null(shortName) | nchar(shortName) > 50) {shortName <- name} # make sure we have something for short name to post
   
   # these are all necessary elements
-  upload <- list('name' = name, 'shortName'=stri_sub(shortName, length=50),'code' = code, 'description'=description, 'domainType' = domainType, 'formName'= formName, 'valueType' = valueType, 
+  upload <- list('id' = id, 'name' = name, 'shortName'=stri_sub(shortName, length=50),'code' = code, 'description'=description, 'domainType' = domainType, 'formName'= formName, 'valueType' = valueType, 
                  'aggregationType' = aggregationType, 'categoryCombo'=list('name' = categoryCombo))
   
   # these are optional

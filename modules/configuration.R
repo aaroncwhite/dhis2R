@@ -227,8 +227,14 @@ scrapeDHIS2_configFile <- function(filename, usr, pwd, url) {
   # take just the options listed, remove na values, and duplicates to just
   # return the unique options we're working with
   options <- catOptions[,-1] %>% .[!is.na(.)] %>% .[!duplicated(.)]
-  cOptions <- all_character(data.frame('name' = options, 'id' = getDHIS2_systemIds(length(options), usr, pwd, url)))
+  cOptions <- all_character(data.frame('name' = options, 'id' = NA))
+  cOptions <- check_ids(cOptions, 'categoryOptions', usr, pwd, url)
+  
+  cOpt_ids <- getDHIS2_Resource('categoryOptions', usr, pwd, url)
+  cOptions$id <- revalue(cOptions$name, make_revalue_map(cOpt_ids$displayName, cOpt_ids$id), warn_missing = F)
+  cOptions$id[is.na(cOptions$id)]
   categoryOptions <-  apply(cOptions, 1, function(x) createDHIS2_CategoryOption(x[2], x[1]))
+  
   
   
   # CREATE CATEGORIES --------------------------------------------------------
@@ -352,6 +358,15 @@ scrapeDHIS2_configFile <- function(filename, usr, pwd, url) {
   
 }
 
+check_ids <- function(scraped_obj, obj_type, usr, pwd, url) {
+    # requires a name and id field in scraped_obj
+    obj_resource <- getDHIS2_Resource(obj_type, usr, pwd, url)
+    scraped_obj$id <- revalue(scraped_obj$name, make_revalue_map(obj_resource$displayName, obj_resource$id), warn_missing = F)
+    if (any(is.na(scraped_obj$id))) {
+        scraped_obj$id[is.na(scraped_obj$id)] <- getDHIS2_systemIds(table(is.na(scraped_obj$id))[1], usr, pwd, url)
+    }
+    return(scraped_obj)
+}
 
 cloneDHIS2_userRole <- function(id, usr, pwd, url, new_name) {
   # Clone an existing user role as a new role with new name

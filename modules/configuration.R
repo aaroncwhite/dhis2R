@@ -324,6 +324,15 @@ scrapeDHIS2_configFile <- function(filename, usr, pwd, url) {
   
   dataElements$dataSet %<>% revalue(make_revalue_map(dSets$name, dSets$id), warn_missing=F)
   
+  de <- list()
+  for (i in 1:nrow(dataElements)) {
+    de %<>% append(list(createDHIS2_DataElement(dataElements$id[i], dataElements$name[i], dataElements$shortName[i],
+                                                dataElements$code[i], dataElements$description[i], valueType=dataElements$valueType[i],
+                                                aggregationType = dataElements$aggregationType[i], categoryCombo= dataElements$categoryCombo[i],
+                                                formName= dataElements$formName[i])))
+  }
+  dataElements <- de
+  
   # USER ROLES -------------------------------------------------------------------
   # userRoles <- readWorkbook(filename,  'User Roles')
 
@@ -338,9 +347,7 @@ scrapeDHIS2_configFile <- function(filename, usr, pwd, url) {
   cat('Summary:\n')
   summary <- as.data.frame.list(lapply(config, function(x) {length(x)}))
   print(summary)
-  summary <- list(summary)
-  names(summary) <- 'importSummary'
-  return(append(config, summary))
+  return(config)
   
   
 }

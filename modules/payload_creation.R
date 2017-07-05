@@ -5,7 +5,7 @@
 # this is easier than trying to find the id of each value. 
 # These functions are NOT for actual uploading, but help create the proper payload format for upload. 
 
-createDHIS2_DataSet <- function(name, shortName = NA, description = "", periodType='Monthly', dataElements=NA, timely=15, other_properties=list()) {
+createDHIS2_DataSet <- function(id, name, shortName = NA, description = "", periodType='Monthly', dataElements=NA, timely=15, other_properties=list()) {
   # Make a list object for upload to DHIS2.  at least a name is required.  
   # dataElements should be a character vector with the names of each data element
   # that should be assigned to the dataSet
@@ -15,14 +15,14 @@ createDHIS2_DataSet <- function(name, shortName = NA, description = "", periodTy
   if (suppressWarnings(is.character(dataElements) & length(dataElements) > 0)) { # convert the named data elements
     # to a list object with a parent called 'dataElements' and each child containing the name of 
     # each dataElement passed originally
-    dataElements <- lapply(dataElements, function(x) list('name' = x))
+    dataElements <- lapply(dataElements, function(x) list('id' = x))
   }
   else {
     dataElements <- list()
   }
   
   
-  upload <- list('name'= name,'shortName'= shortName, 'periodType' = periodType, 'description' = description,
+  upload <- list('id' = id, 'name'= name,'shortName'= shortName, 'periodType' = periodType, 'description' = description,
                  'dataSetElements' = dataElements, 'timelyDays'= timely)
   # incase we passed any other properties, add them now.
   upload <- append(upload, other_properties)
@@ -30,7 +30,7 @@ createDHIS2_DataSet <- function(name, shortName = NA, description = "", periodTy
   return(upload)
 }
 
-createDHIS2_DataElementGroup <- function(id, name, shortName = NA, aggregationType='SUM', dataElements= list(), other_properties=list()) {
+createDHIS2_DataElementGroup <- function(id, name, shortName = NA, aggregationType='SUM', description='', dataElements= list(), other_properties=list()) {
   # make a list object for upload to DHIS2.  requires a name at least
   # other properties can be passed using other_properties in named list f
   # returns list for upload using postDHIS2_metaData()
@@ -42,7 +42,7 @@ createDHIS2_DataElementGroup <- function(id, name, shortName = NA, aggregationTy
   
   # these are all necessary elements
   upload <- list('id' = id, 'name' = name, 'shortName'=stri_sub(shortName, length=50),
-                 'aggregationType' = aggregationType, 'dataElements'=dataElements)
+                 'aggregationType' = aggregationType, 'dataElements'=dataElements, 'description' = description)
   
   # these are optional
   upload <- append(upload, other_properties)

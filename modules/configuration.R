@@ -1,5 +1,5 @@
 library(XLConnect)
-# library(stringi)
+library(stringi)
 library(magrittr)
 library(plyr)
 library(rlist)
@@ -15,7 +15,7 @@ library(rlist)
 # It takes in an excel configuration file, parses out each different part and then posts to the 
 # dhis2 server.  It currently supports data elements, category combos, categories, and category options.
 
-uploadDHIS2_configFile <- function(filename, usr, pwd, url, overwrite=F, prompt_overwrite=T, verbose=F, object=NA) {
+generateDHIS2_metaData <- function(filename, usr, pwd, url, overwrite=F, prompt_overwrite=T, verbose=F, object=NA) {
   # Take a meta data config file, scrape the data off and 
   # upload to dhis2 server for each part. Currently supports
   # category options, categories, category combinations, and data elements
@@ -43,10 +43,24 @@ uploadDHIS2_configFile <- function(filename, usr, pwd, url, overwrite=F, prompt_
     rm(object)
     cat('Using already existing config object.\n\n')
   }
-
   
   results <- list()
   config <- config[names(config) != ('importSummary')]
+  
+  cat('Converting imported data to metaData format...\n')
+  objs <- names(config)
+  for (i in 1:length(config)) {
+    cat(objs[i], '\t')
+    if (nrow(config[[i]]) > 0) {
+      config[[i]] <- lapply(1:nrow(config[[i]]), function(x) convert_to_metaData(config[[i]][x,], objs[i]))
+      
+    }
+    else {
+      config[[i]] <- list()
+    }
+  }
+  
+  
   for (obj in 1:length(config)) {
     # upload each object type as defined  by the list name and data inside that object
     # determine appropriate format using uploadDHIS2_metaData() switch to appropriately
@@ -139,9 +153,64 @@ removeDHIS2_configFile <- function(filename, usr, pwd, url, de=T, catCombo=T, ca
   
 }
 
-scrapeDHIS2_configFile <- function(filename) {
+convert_to_metaData <- function(obj, obj_type) {
+  cc <- 1
+  upload <- switch(obj_type,
+                   'dataElements' = ({
+                     dataElement <- obj[cc,,drop=F] # the row we're looking at
+                     de_name <- dataElement[1,1] # the name
+                     createDHIS2_DataElement(de_name, shortName = dataElement$shortName, aggregationType = dataElement$aggregationType,
+                                             valueType = dataElement$valueType, categoryCombo = dataElement$categoryCombo, 
+                                             description = dataElement$description, formName= dataElement$formName, 
+                                             code= dataElement$code)
+                   }),
+                   'categoryCombos' = ({
+                     catCombo <- obj[cc,] # the row we're looking at
+                     cat_name <- catCombo[1,1] # the first column is the name
+                     if (cat_name != 'default') {
+                       cats <- catCombo[-1] %>% .[!is.na(.)] %>% .[!duplicated(.)] # remove the name column and any NA columns, for good measure, remove dupes
+                       createDHIS2_CategoryCombo(cat_name, cats, shortName = cat_name) # make the 
+                     }
+                     else {
+                       list('name' = 'default')
+                     }
+                     
+                   }),
+                   'categories' = ({ # this follows the same format as above
+                     category <- obj[cc,]
+                     cat_name <- category[1,1]
+                     opts <- category[,-1] %>% .[!is.na(.)] %>% .[!duplicated(.)]
+                     createDHIS2_Category(cat_name, opts, shortName = cat_name)
+                   }),
+                   'categoryOptions' = ({
+                     createDHIS2_CategoryOption(as.character(obj[cc,]))
+                   }),
+                   'dataSets' = ({
+                     ds <- obj[cc,]
+                     createDHIS2_DataSet(ds$dataSet, dataElements = unlist(ds$dataElements), periodType = ds$frequency)
+                   }),
+                   'dataElementGroups' = ({
+                     deg <- obj[cc,,drop=F]
+                     createDHIS2_DataElementGroup(deg$name, deg$shortName, deg$aggregationType, dataElements= unlist(deg$dataElements))
+                   }),
+                   'translations' = ({
+                     trans <- obj[cc,]
+                     createDHIS2_translation(trans$value, trans$property, trans$locale, trans$objectId, trans$className)
+                   }),
+                   'users' = ({
+                     user <- obj[cc,]
+                     createDHIS2_user(user$firstName, user$surname, user$username, user$password, user$userRole, user$organisationUnit)
+                     
+                   })
+  )
+  return(upload)
+}
+
+scrapeDHIS2_configFile <- function(filename, usr, pwd, url) {
   # Take a meta data config file, scrape the data off 
   # for now assuming that the file has all of the necessary tabs a
+  # add_ids will determine if the script should create new system ids 
+  # for the uploaded objects
   
   # Ex.
   # > scrapeDHIS2_configFile('meta-data-config.xlsx')
@@ -151,19 +220,36 @@ scrapeDHIS2_configFile <- function(filename) {
   
   startTime <- Sys.time()
   
-  wb <- XLConnect::loadWorkbook(filename)
-  
   # Load all of the options we're working with
-  catOptions <- XLConnect::readWorksheet(wb, 'Category Options')
+  catOptions <- readWorkbook(filename, 'Category Options')
   
   # CREATE OPTIONS -----------------------------------------------------------
   # take just the options listed, remove na values, and duplicates to just
   # return the unique options we're working with
-  options <- as.data.frame(catOptions[,-1] %>% .[!is.na(.)] %>% .[!duplicated(.)])
-  names(options) <- 'options'
+  options <- catOptions[,-1] %>% .[!is.na(.)] %>% .[!duplicated(.)]
+  cOptions <- all_character(data.frame('name' = options, 'id' = getDHIS2_systemIds(length(options), usr, pwd, url)))
+  categoryOptions <-  apply(cOptions, 1, function(x) createDHIS2_CategoryOption(x[2], x[1]))
+  
   
   # CREATE CATEGORIES --------------------------------------------------------
-  dataElements <- XLConnect::readWorksheet(wb, "Data Elements")
+  # still contained in catOptions (confusing).  Revalue all names with ids
+  opts <- make_revalue_map(cOptions$name, cOptions$id)
+  catOptions[,-1] %<>% apply(2, function(x) revalue(x, opts, warn_missing=F))
+  
+  # get new ids
+  catOptions$id <- getDHIS2_systemIds(nrow(catOptions), usr, pwd, url)
+  names(catOptions)[1] <- 'name' 
+  
+  # convert to lists
+  categories <- list()
+  opts <- greps(c('id', 'name'), names(catOptions))
+  for (i in 1:nrow(catOptions)) {
+    categories %<>% append(list(createDHIS2_Category(catOptions[i, 'id'], catOptions[i, 'name'], catOptions[i, -opts])))
+  }
+
+  
+  # Now do the more complicated stuff
+  dataElements <- readWorkbook(filename,  "Data Elements")
   columns <- c(findColumn_index('Data.Element.Name', dataElements, "Can't determine column with DATA ELEMENT name!", 'Please specify data element column number: '),
                findColumn_index('Short.Name', dataElements, "Can't determine column with SHORT NAME!", 'Please specify short name column number: '),
                findColumn_index('Code', dataElements, "Can't determine column with SHORT NAME!", 'Please specify short name column number: '),
@@ -177,53 +263,80 @@ scrapeDHIS2_configFile <- function(filename) {
                
                
   )
+  
   # CREATE THE CATEGORY COMBINATIONS -----------------------------------------------
   catCombos <- dataElements[,c(grep('Category', names(dataElements))),drop=F]
-  catCombos[,1] <- revalue(catCombos[,1], c('None'='default'))
-  catCombos <- catCombos[1:length(catCombos[,1][!is.na(catCombos[,1])]),, drop=F]
-  catCombos <- catCombos[!duplicated(catCombos[,1]),,drop=F]
+  
+  default_categoryCombo <- getDHIS2_Resource('categoryCombos', usr, pwd, url) %>% .[grep('default', .$displayName), 'id']
+  catCombos[,1] <- revalue(catCombos[,1], c('None'='default'), warn_missing = F)
+  catCombos[,1][is.na(catCombos[,1])] <- 'default'
+  catCombos$id <- getDHIS2_systemIds(nrow(catCombos), usr, pwd, url)
+  
+  
+  catCombos$id[grepl('default', catCombos[,1])] <- default_categoryCombo
+  categoryCombo_ids <- catCombos$id # will use this with dataElement creation
+
+  catCombos <- catCombos[-grep(default_categoryCombo, catCombos$id),,drop=F]
+  names(catCombos)[1] <- 'name'
+  
+  cats <- make_revalue_map(catOptions$name, catOptions$id)
+  
+  catCombos[,-c(1, ncol(catCombos))] %<>% apply(2, function(x) revalue(x, cats, warn_missing = F))
+  
+  categoryCombos <- list()
+  for(i in 1:nrow(catCombos)) {
+    # apply has some weird issues with this, so explicit for loop
+    categoryCombos %<>% append(list(createDHIS2_CategoryCombo(catCombos$id[i], catCombos$name[i], catCombos[i,-c(1, ncol(catCombos))])))
+  }
+  
   
   # DATA ELEMENTS -----------------------------------------------------------------
   dataElements <- dataElements[,columns] 
-  names(dataElements) <- c('dataElement','shortName','code', 'description', 'valueType', 'aggregationType', 'categoryCombo', 'formName', 'dataSet', 'dataElementGroup')
-  dataElements <- dataElements[1:length(dataElements$dataElement[!is.na(dataElements$dataElement)]),]
-  dataElements$categoryCombo <- revalue(dataElements$categoryCombo, c('None'='default'))
+  names(dataElements) <- c('name','shortName','code', 'description', 'valueType', 'aggregationType', 'categoryCombo', 'formName', 'dataSet', 'dataElementGroup')
+  dataElements$categoryCombo <- categoryCombo_ids
+  dataElements$id <- getDHIS2_systemIds(nrow(dataElements), usr, pwd, url)
   
   # DATA ELEMENT GROUP
   # import the dataElementGroup names
-  dataElementGroups <- XLConnect::readWorksheet(wb, 'Data Element Groups')
-  names(dataElementGroups) <- c('name', 'shortName', 'aggregationType')
+  deGroups <- readWorkbook(filename,  'Data Element Groups')
+  names(deGroups) <- c('name', 'shortName', 'aggregationType', 'description')
+  deGroups$id <- getDHIS2_systemIds(nrow(deGroups), usr, pwd, url)
   # now find the matching dataElements from that page
-  for (deg in dataElementGroups$name[!is.na(dataElementGroups$name)]) {
-    de <- dataElements$dataElement[grep(deg, dataElements$dataElementGroup)]
-    dataElementGroups$dataElements[dataElementGroups$name == deg] <- list(de[!is.na(de)])
-    rm(de)
+  dataElementGroups <- list()
+  for (deg in 1:nrow(deGroups)) {
+    de <- dataElements$id[grep(deGroups$name[deg], dataElements$dataElementGroup)]
+    dataElementGroups %<>% append(list(createDHIS2_DataElementGroup(deGroups$id[deg], deGroups$name[deg], dataElements = de)))
   }
   
-  
+  dataElements$dataElementGroup %<>% revalue(make_revalue_map(deGroups$name, deGroups$id), warn_missing=F)
   
   # DATA SETS ---------------------------------------------------------------------
   # this one is going to be slightly different as we need information on two pages
-  dataSets <- XLConnect::readWorksheet(wb, 'Dataset')
-  for (ds in dataSets$Dataset.Name[!is.na(dataSets$Dataset.Name)]) {
-    de <- dataElements$dataElement[dataElements$dataSet == ds]
-    dataSets$dataElements[dataSets$Dataset.Name == ds] <- list(de[!is.na(de)])
+  dSets <- readWorkbook(filename,  'Dataset')
+  names(dSets) <- c('name','description', 'frequency', 'ou_level', 'attribute', 'catCombo')
+  dSets$id <- getDHIS2_systemIds(nrow(dSets), usr, pwd, url)
+  
+  dataSets <- list()
+  for (ds in 1:nrow(dSets)) {
+    de <- dataElements$id[grep(dSets$name[ds], dataElements$dataSet)]
+    dataSets %<>% append(list(createDHIS2_DataSet(dSets$id[ds], dSets$name[ds], periodType = dSets$frequency, description= dSets$description, dataElements = de)))
   }
-  names(dataSets) <- c('dataSet', 'frequency', 'ou_level', 'attribute', 'catCombo', 'dataElements')
+  
+  dataElements$dataSet %<>% revalue(make_revalue_map(dSets$name, dSets$id), warn_missing=F)
   
   # USER ROLES -------------------------------------------------------------------
-  # userRoles <- XLConnect::readWorksheet(wb, 'User Roles')
+  # userRoles <- readWorkbook(filename,  'User Roles')
 
   # USER INVITATION --------------------------------------------------------------
   
   
-  config <- list('categoryOptions' = options, 'categories'= catOptions, 'categoryCombos' = catCombos,
+  config <- list('categoryOptions' = categoryOptions, 'categories'= categories, 'categoryCombos' = categoryCombos,
                  'dataElements' = dataElements, 'dataElementGroups' = dataElementGroups, 'dataSets' = dataSets)
   
   cat("----- Scrape Completed -----\n")
   print(Sys.time() - startTime)
   cat('Summary:\n')
-  summary <- as.data.frame.list(lapply(config, function(x) {nrow(x[1])}))
+  summary <- as.data.frame.list(lapply(config, function(x) {length(x)}))
   print(summary)
   summary <- list(summary)
   names(summary) <- 'importSummary'
@@ -391,7 +504,7 @@ uploadDHIS2_orgUnitHierarchy <- function(file, usr, pwd, url) {
   # fill in parent ids if we have them
   current_ids <- current_orgUnits$id 
   names(current_ids) <- current_orgUnits$displayName
-  new_orgUnits$parent <- revalue(new_orgUnits$parent, current_ids)
+  new_orgUnits$parent <- revalue(new_orgUnits$parent, current_ids, warn_missing = F)
   
   for (ou in 1:nrow(new_orgUnits)) {
     # we're going to upload each record and then update our list as we go

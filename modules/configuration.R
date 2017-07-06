@@ -206,12 +206,21 @@ convert_to_metaData <- function(obj, obj_type) {
   return(upload)
 }
 
-scrapeDHIS2_configFile <- function(filename, usr, pwd, url) {
+scrapeDHIS2_configFile <- function(filename, usr, pwd, url, warn=T, upload=T) {
   # Take a meta data config file, scrape the data off 
   # for now assuming that the file has all of the necessary tabs a
   # add_ids will determine if the script should create new system ids 
   # for the uploaded objects
-  
+  if (warn) {
+    cat('Scraping Excel config file\n
+      IMPORTANT: After importing, you will need to update and edit \n
+      existing metaData objects within DHIS2 or use more complex methods\n
+      for changes.  It is not possible to reimport a configuration file\n
+      with changes after it has already been imported the first time!\n\n')
+    ans <- confirmAction('Proceed with the process? (Y/N) ')
+    if (ans == "N") stop('Import canceled.')
+  }
+
   # Ex.
   # > scrapeDHIS2_configFile('meta-data-config.xlsx')
   # Config scraped in 1.3 seconds
@@ -227,7 +236,7 @@ scrapeDHIS2_configFile <- function(filename, usr, pwd, url) {
   # take just the options listed, remove na values, and duplicates to just
   # return the unique options we're working with
   options <- catOptions[,-1] %>% .[!is.na(.)] %>% .[!duplicated(.)]
-  cOptions <- all_character(data.frame('name' = options, 'id' = NA))
+  cOptions <- all_character(data.frame('name' = options))
   cOptions <- check_ids(cOptions, 'categoryOptions', usr, pwd, url)
 
   categoryOptions <-  apply(cOptions, 1, function(x) {
@@ -245,7 +254,6 @@ scrapeDHIS2_configFile <- function(filename, usr, pwd, url) {
   
   # get new ids
   names(catOptions)[1] <- 'name' 
-  catOptions$id <- NA
   catOptions <- check_ids(catOptions, 'categories', usr, pwd, url)
   
     
@@ -367,6 +375,8 @@ scrapeDHIS2_configFile <- function(filename, usr, pwd, url) {
   cat('Summary:\n')
   summary <- as.data.frame.list(lapply(config, function(x) {length(x)}))
   print(summary)
+  cat('Use the following to post to the server:\n')
+  cat('responses <- uploadDHIS2_metaData(object_you_just_imported, usr, pwd, url) \n\n')
   return(config)
   
   
@@ -374,13 +384,16 @@ scrapeDHIS2_configFile <- function(filename, usr, pwd, url) {
 
 check_ids <- function(scraped_obj, obj_type, usr, pwd, url) {
     # requires a name and id field in scraped_obj
-  if (!any(grepl('id', names(scraped_obj)))) scraped_obj$id <- NA
+  # if (!any(grepl('id', names(scraped_obj)))) scraped_obj$id <- NA
   
   obj_resource <- getDHIS2_Resource(obj_type, usr, pwd, url)
-  scraped_obj$id <- revalue(scraped_obj$name, make_revalue_map(obj_resource$displayName, obj_resource$id), warn_missing = F)
-  scraped_obj$existing <- T
+  
+  scraped_obj <- merge(scraped_obj, obj_resource[,c('displayName', 'id')], by.y='displayName', by.x='name', all.x=T)
+  
+  # scraped_obj$id <- revalue(scraped_obj$name, make_revalue_map(obj_resource$displayName, obj_resource$id), warn_missing = F,)
+  scraped_obj$existing <- !is.na(scraped_obj$id)
   if (any(is.na(scraped_obj$id))) {
-      scraped_obj$id[is.na(scraped_obj$id)] <- getDHIS2_systemIds(table(is.na(scraped_obj$id))[1], usr, pwd, url)
+      scraped_obj$id[is.na(scraped_obj$id)] <- getDHIS2_systemIds(table(is.na(scraped_obj$id))[2], usr, pwd, url)
   }
   return(scraped_obj)
 }

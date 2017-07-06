@@ -5,7 +5,8 @@
 # this is easier than trying to find the id of each value. 
 # These functions are NOT for actual uploading, but help create the proper payload format for upload. 
 
-createDHIS2_DataSet <- function(id, name, shortName = NA, description = "", periodType='Monthly', dataElements=NA, timely=15, other_properties=list()) {
+createDHIS2_DataSet <- function(id, name, shortName = NA, description = "", periodType='Monthly', 
+                                dataElements=NA, timely=15, other_properties=list()) {
   # Make a list object for upload to DHIS2.  at least a name is required.  
   # dataElements should be a character vector with the names of each data element
   # that should be assigned to the dataSet
@@ -30,7 +31,8 @@ createDHIS2_DataSet <- function(id, name, shortName = NA, description = "", peri
   return(upload)
 }
 
-createDHIS2_DataElementGroup <- function(id, name, shortName = NA, aggregationType='SUM', description='', dataElements= list(), other_properties=list()) {
+createDHIS2_DataElementGroup <- function(id, name, shortName = NA, aggregationType='SUM', description='', 
+                                         dataElements= list(), other_properties=list()) {
   # make a list object for upload to DHIS2.  requires a name at least
   # other properties can be passed using other_properties in named list f
   # returns list for upload using postDHIS2_metaData()
@@ -42,7 +44,8 @@ createDHIS2_DataElementGroup <- function(id, name, shortName = NA, aggregationTy
   
   # these are all necessary elements
   upload <- list('id' = id, 'name' = name, 'shortName'=stri_sub(shortName, length=50),
-                 'aggregationType' = aggregationType, 'dataElements'=dataElements, 'description' = description)
+                 'aggregationType' = aggregationType, 'dataElements'=dataElements, 'description' = description
+                 )
   
   # these are optional
   upload <- append(upload, other_properties)
@@ -52,7 +55,8 @@ createDHIS2_DataElementGroup <- function(id, name, shortName = NA, aggregationTy
 
 
 createDHIS2_DataElement <- function(id, name, shortName = NA, code="", description="", domainType='AGGREGATE', valueType= 'INTEGER', 
-                                    aggregationType='SUM', categoryCombo='default', formName="", other_properties=list()) {
+                                    aggregationType='SUM', categoryCombo='default', formName="", other_properties=list()
+                                    ) {
   # make a list object for upload to DHIS2.  requires a name at least
   # other properties can be passed using other_properties in named list f
   # returns list for upload using postDHIS2_metaData()
@@ -100,7 +104,7 @@ createDHIS2_Category <- function(id, name, options=c(), shortName = NA, dataDime
     categoryOptions <- append(categoryOptions, list(list('id'= o)))
   }
   
-  upload <- list('name' = name, 'shortName'=shortName, 'categoryOptions'= categoryOptions, 'dataDimensionType' = dataDimension)
+  upload <- list('id' = id, 'name' = name, 'shortName'=shortName, 'categoryOptions'= categoryOptions, 'dataDimensionType' = dataDimension)
   upload <- append(upload, other_properties)
   return(upload)
 }
@@ -164,6 +168,11 @@ createDHIS2_optionSet <- function(name, option_ids = list()) {
 createDHIS2_option <- function(name, code) {
   # make an option for an option set
   return(list('name' = name, 'code' = code))
+}
+
+add_href <- function(obj, obj_type, url) {
+  # add an href element to a metadata object for "putting"
+  obj %<>% append(list('href' = sprintf('%s%s/%s', url, obj_type, obj$id)))
 }
 
 # USERS -----------------------------------------------------------------------------------

@@ -299,7 +299,7 @@ scrapeDHIS2_configFile <- function(filename, usr, pwd, url, warn=T, upload=T) {
   
   cats <- make_revalue_map(catOptions$name, catOptions$id)
   
-  catCombos[,-c(1, ncol(catCombos))] %<>% apply(2, function(x) revalue(x, cats, warn_missing = F))
+  if (nrow(catCombos) > 0) catCombos[,-c(1, ncol(catCombos))] %<>% apply(2, function(x) revalue(x, cats, warn_missing = F))
   
   categoryCombos <- list()
   for(i in 1:nrow(catCombos)) {

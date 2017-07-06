@@ -239,13 +239,12 @@ scrapeDHIS2_configFile <- function(filename, usr, pwd, url, warn=T, upload=T) {
   cOptions <- all_character(data.frame('name' = options))
   cOptions <- check_ids(cOptions, 'categoryOptions', usr, pwd, url)
 
-  categoryOptions <-  apply(cOptions, 1, function(x) {
-    obj <- createDHIS2_CategoryOption(x[2], x[1])
-    if (x['existing']) obj %<>% add_href('categoryOptions', url)
-    obj
-    })
-  
-  
+  categoryOptions <- list()
+  for (i in 1:nrow(cOptions)) {
+    obj <- createDHIS2_CategoryOption(cOptions$id[i], cOptions$name[i])
+    if (cOptions$existing[i]) obj %<>% add_href('categoryOptions', url)
+    categoryOptions %<>% append(list(obj))
+  }
   
   # CREATE CATEGORIES --------------------------------------------------------
   # still contained in catOptions (confusing).  Revalue all names with ids
@@ -375,8 +374,8 @@ scrapeDHIS2_configFile <- function(filename, usr, pwd, url, warn=T, upload=T) {
   cat('Summary:\n')
   summary <- as.data.frame.list(lapply(config, function(x) {length(x)}))
   print(summary)
-  cat('Use the following to post to the server:\n')
-  cat('responses <- uploadDHIS2_metaData(object_you_just_imported, usr, pwd, url) \n\n')
+  cat('\nUse the following to post to the server:\n\n')
+  cat('\tresponses <- uploadDHIS2_metaData(object_you_just_imported, usr, pwd, url) \n\n')
   return(config)
   
   
@@ -393,7 +392,7 @@ check_ids <- function(scraped_obj, obj_type, usr, pwd, url) {
   # scraped_obj$id <- revalue(scraped_obj$name, make_revalue_map(obj_resource$displayName, obj_resource$id), warn_missing = F,)
   scraped_obj$existing <- !is.na(scraped_obj$id)
   if (any(is.na(scraped_obj$id))) {
-      scraped_obj$id[is.na(scraped_obj$id)] <- getDHIS2_systemIds(table(is.na(scraped_obj$id))[2], usr, pwd, url)
+      scraped_obj$id[is.na(scraped_obj$id)] <- getDHIS2_systemIds(table(is.na(scraped_obj$id))["TRUE"], usr, pwd, url)
   }
   return(scraped_obj)
 }
@@ -421,14 +420,14 @@ uploadDHIS2_metaData <- function(config, usr, pwd, url) {
     if (length(config[[x]]) > 1) {
       lapply(config[[x]], function(y) {
         cat('\r', y$name, rep(' ', 50)) 
-        if (any(grepl('href', names(y)))) putDHIS2_metaData(y, usr, pwd, y$href)
-        else postDHIS2_metaData(y, x, usr, pwd, url) 
+        # if (any(grepl('href', names(y)))) putDHIS2_metaData(y, usr, pwd, y$href)
+         postDHIS2_metaData(y, x, usr, pwd, url) 
       })
     }
     else {
       cat('\r', config[[x]][[1]]$name, rep(' ', 50)) 
-      if (any(grepl('href', names(config[[x]][[1]])))) putDHIS2_metaData(config[[x]][[1]], usr, pwd, config[[x]][[1]]$href)
-      else postDHIS2_metaData(config[[x]][[1]], x, usr, pwd, url)
+      # if (any(grepl('href', names(config[[x]][[1]])))) putDHIS2_metaData(config[[x]][[1]], usr, pwd, config[[x]][[1]]$href)
+       postDHIS2_metaData(config[[x]][[1]], x, usr, pwd, url)
     }
   })
   

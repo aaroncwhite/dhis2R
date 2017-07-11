@@ -263,7 +263,7 @@ patchDHIS2_metaData <- function(upload, id, obj_type, usr, pwd, url, verbose=T) 
   # elements sent in the payload. 
   
   if (verbose==T) cat('Updating\n')
-  req <- PATCH(paste0(url, type, '/', id), authenticate(usr, pwd), body= toJSON(upload),accept_json())
+  req <- PATCH(paste0(url, obj_type, '/', id), authenticate(usr, pwd), body= toJSON(upload),accept_json())
   
   flush.console()
   return(req)

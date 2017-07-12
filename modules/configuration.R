@@ -277,7 +277,7 @@ scrapeDHIS2_configFile <- function(filename, usr, pwd, url, warn=T, upload=T) {
   dataElements <- readWorkbook(filename,  "Data Elements")
   columns <- c(findColumn_index('Data.Element.Name', dataElements, "Can't determine column with DATA ELEMENT name!", 'Please specify data element column number: '),
                findColumn_index('Short.Name', dataElements, "Can't determine column with SHORT NAME!", 'Please specify short name column number: '),
-               findColumn_index('Code', dataElements, "Can't determine column with SHORT NAME!", 'Please specify short name column number: '),
+               findColumn_index('Code', dataElements, "Can't determine column with CODE!", 'Please specify short name column number: '),
                findColumn_index('Description',dataElements, "Can't determine column with DESCRIPTION", 'Please specify description column number: '),
                findColumn_index("Value.Type", dataElements,"Can't determine column with VALUE TYPE!",'Please specify value type column number: '),
                findColumn_index('Aggregation.Type',dataElements, "Can't determine column with AGGREGATION TYPE!", 'Please specify aggregation type column number: '),

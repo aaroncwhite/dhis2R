@@ -37,7 +37,7 @@ source('settings.R')
 You might hit some missing libraries at this point.  You can try to run the "new_instance_setup.R" file to install the missing libraries.  There are a lot! 
 
 ```{r}
-source('../new_instance_setup.R')
+source('new_instance_setup.R')
 ```
 
 

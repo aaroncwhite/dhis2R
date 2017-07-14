@@ -494,11 +494,12 @@ queryDHIS2 <- function(term, term_type, obj_type, usr, pwd, url) {
 }
 
 # Credentials
-setDHIS2_credentials <- function(instance=NA) {
+setDHIS2_credentials <- function(instance=NA, credentials_file=NA) {
   # set credentials based on a stored file in the base directory called .credentials
   # this obviously isn't the best/most secure, but it's better than being directly in the file
   # itself
-  if (!file.exists('.credentials')) stop('No credentials found!  Are they defined in .credentials? See .credentials_template for more.')
+  if (!file.exists('.credentials') & is.na(credentials_file)) stop('No credentials found!  Are they defined in .credentials? See .credentials_template for more.')
+  
   credentials <- fromJSON('.credentials')
   if (is.na(instance) | !(instance %in% names(credentials))) {
     instance <- readline(sprintf('Select server credentials (%s):', paste(names(credentials), collapse = ", ")))

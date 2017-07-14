@@ -1,3 +1,4 @@
+
 ---
 title: "DHIS2R Introduction"
 output:
@@ -6,6 +7,14 @@ output:
   pdf_document: default
 ---
 An overview of interacting with the system and getting information back.
+
+
+**Note:** This workbook assumes your working directory is set to the root *dhis2R* folder.  If it is not currently, please set it now. You can do this in RStudio by pressing *Ctrl + Shift + H* and visually navigating to the proper directory or by using the *setwd()* function in the console.
+```{r "setup", include=FALSE}
+# This makes sure we're using the root dhis2R directory when running the file
+require("knitr")
+opts_knit$set(root.dir = "../")
+```
 
 The primary goal of these functions was to make it easier to interact and update DHIS2 from a comfortable programming environment (for me at least) and integrate with existing analysis workflows.  As the DHIS2 API keeps changing, some of these functions are starting to break, but the main interactions are still working. These functions have been tested and working with R version 3.4 as of July 2017. 
 
@@ -19,12 +28,10 @@ Everything with the DHIS2 API is like a call and response.  You either request s
 
 To start off, load the functions and then set some variables for your DHIS2 username, password, and api url.  Note the inclusion of the "/api/" at the end of the url address. We're going to use the demo dhis2 server from dhis2.org to start with.  
 
-**Note:** This workbook assumes your working directory is set to 'dhis2R/examples/'.  If it is not currently, please set it now. You can do this in RStudio by pressing *Ctrl + Shift + H* and visually navigating to the proper directory or by using the *setwd()* function in the console.
-
 ```{r}
 # To make things easier, you can define the usr, pwd, and url 
 # variables in the file and skip manually defining them every time
-source('../settings.R') # The ../ means to look in the parent directory
+source('settings.R') 
 
 ```
 You might hit some missing libraries at this point.  You can try to run the "new_instance_setup.R" file to install the missing libraries.  There are a lot! 
@@ -36,7 +43,7 @@ source('../new_instance_setup.R')
 
 Almost ready to go.  Last thing we need to do is set our access credentials using *setDHIS2_credentials()*.
 ```{r}
-setDHIS2_credentials('demo', credentials_file = '../.credentials_template')
+setDHIS2_credentials('demo', credentials_file = '.credentials_template')
 ```
 Let's break that down.  The first part *'demo'* says we want to use the dhis2.org demo server.  But where did that come from?  You probably guessed it, I've stored that information in a file called *.credentials_template* and explicitly told setDHIS2_credentials to look there for the information. 
 

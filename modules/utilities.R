@@ -110,7 +110,6 @@ find_replace <- function(obj, find, replace, ignore = NA, replaced=0) {
   # Ex. 
   # If dataElements[[1]]$id == '1', set find = 1, replace = 2
   # response will be dataElements[[1]]$id == '2'
-  
   # the replace operation if this is not a list
   if (!is.list(obj)) { 
     obj <- gsub(find, replace, obj)
@@ -137,6 +136,52 @@ find_replace <- function(obj, find, replace, ignore = NA, replaced=0) {
     return(obj)
   }
 }
+
+map_property <- function(obj, property, prior=c(), name="") {
+  # recursive function to evaluate a list of lists containing dhis2 metadata
+  # will search for stated property value ('id', 'name', etc) and return
+  # the indices of the nested list and the property_value where that 
+  # named property was found.  This does not search for specific values
+  # but the named list elements that contain them.
+  # Ex.
+  # > obj <- getDHIS2_metadata(usr, pwd, url)
+  # > x <- map_property(obj, 'id')
+  # > x[[1]]
+  # $indices
+  # [1] 1 3
+  # 
+  # $property_value
+  # [1] "SQX6LhW3eQi"
+  
+  if (is.null(name)) name <- ""
+  
+  if (!is.list(obj) & property == name) { 
+    found <- list('indices' = prior,'property_value' = obj)
+    return(list(found))
+  }
+  # Recurse if this is a list
+  else if (is.list(obj) & length(obj) > 0) {
+    # look at all the sub elements and perform the same operation
+    # as long as the length > 0 and the property is not declared in 
+    # ignore
+    n <- names(obj)
+    # using lapply is much faster since it uses C calls underneath the 
+    # the hood.  based on tests it is 4x as fast for this operation.
+    recursed <- lapply(1:length(obj), function(i) {
+      if (length(obj[[i]]) > 0) {
+        # cat(n[i], i, '\n')
+        # replace in place
+        map_property(obj[[i]], property=property, prior=c(prior, i), name=n[i])
+      }
+    })
+    # return the final modified list
+    # unlist so we don't have the same nested structure at the end. 
+    # this ensures all our results are at the same level
+    
+    return(unlist(recursed, recursive = F)) 
+  }
+}
+
 
 
 # SPLITTING --------------------------------------------------------------------

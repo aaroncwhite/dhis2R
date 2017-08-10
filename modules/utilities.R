@@ -102,7 +102,8 @@ findColumn_index <- function(find, df, head_message, prompt) {
   return(index)
 }
 
-find_replace <- function(obj, find, replace, ignore = NA, replaced=0) {
+# RECURSIVE LIST OPERATIONS ------------------------------------------------
+find_replace.old <- function(obj, find, replace, ignore = NA, replaced=0) {
   # recursive function to evaluate a list of lists containing dhis2 metadata
   # whatever value is passed in for find will be substituted with replace
   # Evaluates recursively through a list object until it finds locations that 
@@ -128,7 +129,7 @@ find_replace <- function(obj, find, replace, ignore = NA, replaced=0) {
       
       if (length(obj[[i]]) > 0 & check_ignore) {
         # replace in place
-        obj[[i]] <- find_replace(obj[[i]], find, replace, ignore=ignore, replaced=replaced)
+        obj[[i]] <- find_replace.old(obj[[i]], find, replace, ignore=ignore, replaced=replaced)
       }
       
     }
@@ -137,7 +138,42 @@ find_replace <- function(obj, find, replace, ignore = NA, replaced=0) {
   }
 }
 
-map_property <- function(obj, property, prior=c(), name="") {
+find_replace <- function(obj, value_pairs, obj_map, property, parallel=F) {
+  # map the specific property to replace
+  # run through list of value pairs to replace
+  # return final object back
+  
+  if (missing(obj_map) & !missing(property)) {
+    cat('Making property map for', property, '\n')
+    obj_map <- map_property(obj, property)
+  }
+  else if (missing(obj_map) & missing(property)) {
+    stop('Both obj_map and property are missing.  Please define at least one.')
+  }
+  
+  if (parallel) {
+    cl <- makeCluster(detectCores() + 1)
+    registerDoParallel(cl)
+    obj_map %<>% split_map_nodes()
+    
+    obj[sapply(obj_map, function(j) j$node)] <- foreach(i=1:length(obj_map),.packages = 'magrittr', .export = c('find_replace', 'replace_property_value', 'follow_map', 'match_property_value')) %dopar% {
+      find_replace(obj[[obj_map[[i]]$node]], value_pairs, obj_map[[i]]$obj_map, parallel=F)
+    }
+    stopCluster(cl)
+    
+    
+  }
+  else {
+    for (i in 1:nrow(value_pairs)) {
+      print(value_pairs[i,])
+      obj <- replace_property_value(obj, value_pairs$find[i], value_pairs$replace[i], obj_map)
+    }
+  }
+
+  return(obj)
+}
+
+map_property <- function(obj, property, prior=c(), name="", ignore=c('user', 'organisationUnits', 'userGroupAccesses')) {
   # recursive function to evaluate a list of lists containing dhis2 metadata
   # will search for stated property value ('id', 'name', etc) and return
   # the indices of the nested list and the property_value where that 
@@ -152,11 +188,11 @@ map_property <- function(obj, property, prior=c(), name="") {
   # 
   # $property_value
   # [1] "SQX6LhW3eQi"
-  
   if (is.null(name)) name <- ""
   
-  if (!is.list(obj) & property == name) { 
-    found <- list('indices' = prior,'property_value' = obj)
+  
+  if (!is.list(obj) & name %in% property) { 
+    found <- list('indices' = prior,'property_value' = obj, 'property' = name)
     return(list(found))
   }
   # Recurse if this is a list
@@ -165,25 +201,79 @@ map_property <- function(obj, property, prior=c(), name="") {
     # as long as the length > 0 and the property is not declared in 
     # ignore
     n <- names(obj)
-    # using lapply is much faster since it uses C calls underneath the 
-    # the hood.  based on tests it is 4x as fast for this operation.
-    recursed <- lapply(1:length(obj), function(i) {
-      if (length(obj[[i]]) > 0) {
-        # cat(n[i], i, '\n')
-        # replace in place
-        map_property(obj[[i]], property=property, prior=c(prior, i), name=n[i])
-      }
-    })
-    # return the final modified list
-    # unlist so we don't have the same nested structure at the end. 
-    # this ensures all our results are at the same level
-    
-    return(unlist(recursed, recursive = F)) 
+    skip <- (n %in% ignore)
+    if (any(skip)) {
+      n <- n[!skip]
+      obj <- obj[!skip]
+    }
+
+    if (length(obj) > 0) {
+      # using lapply is much faster since it uses C calls underneath the 
+      # the hood.  based on tests it is 4x as fast for this operation when there
+      # are multiple levels of nested properties (like ids which can be at the root level 
+      # for a specific object and also nested deeper for the dependent relationships)
+      recursed <- lapply(1:length(obj), function(i) {
+        if (length(obj[[i]]) > 0) {
+          # cat(n[i], i, '\n')
+          prior <- c(prior, i)
+          result <- map_property(obj[[i]], property=property, ignore=ignore, prior=prior, name=n[i])
+          result
+          
+        }
+      })
+      
+      # return the final modified list
+      # unlist so we don't have the same nested structure at the end. 
+      # this ensures all our results are at the same level
+      
+      return(unlist(recursed, recursive = F)) 
+    }
   }
 }
 
+match_property_value <- function(obj_map, find_value) {
+  # Find a value using the obj_map created by map_property and 
+  # return a filtered obj_map for use with replace_property_value
+  return(which(sapply(obj_map, function(x) grepl(find_value, x$property_value))))
+}
 
+follow_map <- function(obj, indices, find_value, replace_value) {
+  # Recurse into a nested list using a vector of indices
+  # when there are no more indices, replace the value and
+  # return the nested list intact
+  if (length(indices) == 1) {
+    obj[[indices]] %<>% gsub(find_value, replace_value, .)
+    return(obj)
+  }
+  else if (length(indices) > 1) {
+    obj[[indices[1]]] <- follow_map(obj[[indices[1]]], indices[-1], find_value, replace_value)
+    return(obj)
+  }
+  
+}
 
+replace_property_value <- function(obj, find_value, replace_value, obj_map) {
+  # Find a specific property_value and replace with another in the main object
+  # uses an obj_map created by map_property to define a set of indices and 
+  # property values to run through.  This allows for faster replacement
+  # since we don't need to recurse through the object multiple times
+  # looking for different things
+  
+  matched_obj <- obj_map[match_property_value(obj_map, find_value)]
+  
+  for (i in matched_obj) {
+    obj <- follow_map(obj, i$indices, find_value, replace_value)
+  }
+  return(obj)
+}
+
+split_map_nodes <- function(obj_map) {
+  # split object map from map_property into nodes based on the 
+  # first index value returned
+  nodes <- sapply(obj_map, function(x) x$indices[1])
+  obj_map_nodes <- lapply(unique(nodes), function(x) list('node' = x, 'obj_map' = lapply(obj_map[which(nodes %in% x)], function(y) {y$indices <- y$indices[-1]; y})))
+  return(obj_map_nodes)
+} 
 # SPLITTING --------------------------------------------------------------------
 calcSplits <- function(df, splitBy) {
   # Used by postDHIS2_Values(), this will split a data frame into 

@@ -1,22 +1,36 @@
 # Cloning functions for one-way sync between a source DHIS2 instance and destination instance
+library(lubridate)
 
-# Object types that are pulled from the system
-.config_objects <- c('categoryOptions', 'categories', 'categoryCombos', 'categoryOptionCombos', 'optionSets', 'attributes', 
-                     'dataElements', 'dataElementGroups', 'dataElementGroupSets', 'indicators', 'indicatorGroups', 'indicatorGroupSets',
-                     'dataSets')
+# Object types that are pulled from the system.  These are a select set specifically for
+# aggregate space data collection and analysis.  This does NOT cover Tracker related objects. 
+.config_objects <- c(
+  # Aggregate dimension objets
+  'categoryOptions', 'categories', 'categoryCombos', 'categoryOptionCombos', 
+  # Additional answer sets and attributes
+  'optionSets', 'attributes', 
+  # Data Elements
+  'dataElements', 'dataElementGroups', 'dataElementGroupSets',
+  # Indicators
+  'indicatorTypes', 'indicators', 'indicatorGroups', 'indicatorGroupSets',
+  # Data Sets
+  'dataEntryForms', 'dataSets')
 
 
-cloneDHIS2_data <- function(usr.from, pwd.from, url.from, usr.to, pwd.to, url.to, 
-                               parent_ous = NULL, specific_dataSets = NULL, yearly_to_monthly=T,
-                               startDate = Sys.Date() - months(6), endDate= Sys.Date() + years(1), existing_upload_file=NA) {
+cloneDHIS2_data <- function(usr.src, pwd.src, url.src, usr.dest, pwd.dest, url.dest, 
+                            parent_ous = NULL, specific_dataSets = NULL, match_on='code', match_on_prefix='MOH-',
+                            yearly_to_monthly=F, startDate = Sys.Date() - months(6), 
+                            endDate= Sys.Date() + years(1), existing_upload_file=NA) {
   # Pull data from one dhis2 and post to another.  If specific_dataSets is specified, it will take each character vector
   # element and find those dataSets from the source dhis2 instance and attempt to download.  If NULL, it will attempt all.
   # this only works when uuids match for BOTH systems.  Otherwise it will kick errors. 
-  
+  # match_on determines the property to match the data in the source system to the destination system. 
+  # For our configurations, we're storing the source system id in the 'code' property and adding a prefix of 'MOH-'.
+  # Change the match_on_prefix to match whatever has been set in the system.  match_on defaults to 'code' and match_on_prefix 
+  # defaults to 'MOH-'
+
   if(!dir.exists('temp/')) dir.create('temp')
-  library(lubridate)
   
-  from.ds <- getDHIS2_Resource('dataSets', usr.from, pwd.from, url.from, 'periodType')
+  from.ds <- getDHIS2_Resource('dataSets', usr.src, pwd.src, url.src, 'periodType')
   upload_results <- list()
   
   orgUnits.dest <- getDHIS2_Resource('organisationUnits', usr, pwd, url)
@@ -25,8 +39,8 @@ cloneDHIS2_data <- function(usr.from, pwd.from, url.from, usr.to, pwd.to, url.to
     cat('Trying to auto-match organisationUnits\n')
     # if no parent orgUnits defined, try to intuit by matching the highest level units for each system
     # requires that ids match
-    orgUnits.dest <- getDHIS2_Resource('organisationUnits', usr.to, pwd.to, url.to, c('parent', 'level'))
-    orgUnits.source <- getDHIS2_Resource('organisationUnits', usr.from, pwd.from, url.from, c('parent', 'level'))
+    orgUnits.dest <- getDHIS2_Resource('organisationUnits', usr.dest, pwd.dest, url.dest, c('parent', 'level'))
+    orgUnits.source <- getDHIS2_Resource('organisationUnits', usr.src, pwd.src, url.src, c('parent', 'level'))
     for (ll in 1:length(unique(orgUnits.dest$level))) { # look at each level, stop when matches are found. this will cause problems if hierarchy doesn't match exactly
       test <-  orgUnits.dest$id[orgUnits.dest$level == ll] %in% orgUnits.source$id[orgUnits.source$level == ll]
       if (any(test)) break # stop if we found matches. we'll assume any children match in this case. again, this will cause problems if the hierarchy doesn't match
@@ -45,7 +59,7 @@ cloneDHIS2_data <- function(usr.from, pwd.from, url.from, usr.to, pwd.to, url.to
       print(from.ds$displayName[i])
       d <- data.frame()
       for (org in parent_ous){
-        sub <- try(getDHIS2_dataSet(from.ds$id[i], org, startDate, endDate, usr.from, pwd.from, children='true', url.from, lookup_names = F))
+        sub <- try(getDHIS2_dataSet(from.ds$id[i], org, startDate, endDate, usr.src, pwd.src, children='true', url.src, lookup_names = F))
         # Sys.sleep(5)
         if (is.data.frame(sub)) {
           d <- rbind.fill(d, sub)
@@ -80,12 +94,28 @@ cloneDHIS2_data <- function(usr.from, pwd.from, url.from, usr.to, pwd.to, url.to
     d %<>% rbind.fill(read.csv(paste0('temp/', f), stringsAsFactors = F))
   }
   # d <- read.csv(d, stringsAsFactors = F)
-  resp <- postDHIS2_Values(d[,c('dataElement', 'orgUnit', 'period', 'categoryOptionCombo', 'attributeOptionCombo', 'value')], 1000, usr.to, pwd.to, url.to)
-  file.remove('temp/upload.csv')
+  
+  # Update the id values to match our system
+  # orgunits are already downloaded in orgUnits.dest
+  cat('Converting id scheme to destination system based on', match_on, '. Hang tight.\n')
+  catOptCmbo <- getDHIS2_Resource('categoryOptionCombos', usr.dest, pwd.dest, url.dest)
+  de <- getDHIS2_Resource('dataElements', usr.dest, pwd.dest, url.dest)
+  
+  d %<>% convert_src_to_dest(match_on, match_on_prefix, de, orgUnits.dest, catOptCmbo)
+  
+  resp <- postDHIS2_Values(d[,c('dataElement', 'orgUnit', 'period', 'categoryOptionCombo', 'attributeOptionCombo', 'value', 'created', 'lastUpdated')], 1000, usr.dest, pwd.dest, url.dest)
+  # file.remove('temp/upload.csv')
   return(resp)
   
 }
 
+convert_src_to_dest <- function(df, match_on, match_on_prefix, dataElements, organisationUnits, categoryOptionCombos) {
+  df$dataElement %<>% revalue(make_revalue_map(gsub(match_on_prefix,"", dataElements$code), dataElements$id), warn_missing = F)
+  df$orgUnit %<>% revalue(make_revalue_map(gsub(match_on_prefix, "", organisationUnits$code), organisationUnits$id), warn_missing = F)
+  df$categoryOptionCombo %<>% revalue(make_revalue_map(gsub(match_on_prefix,"", categoryOptionCombos$code), categoryOptionCombos$id), warn_missing = F)
+  df$attributeOptionCombo %<>% revalue(make_revalue_map(gsub(match_on_prefix,"", categoryOptionCombos$code), categoryOptionCombos$id), warn_missing = F)
+  return(df)
+}
 
 getDHIS2_metadata <- function(usr, pwd, url, individual_endpoints=T, objects=.config_objects) {
   # get the entire metadata, with details from a dhis2 instance

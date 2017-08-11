@@ -70,7 +70,7 @@ getDHIS2_Request <- function(usr, pwd, url, add_props=c(), transform_to_df=T, qu
   if (length(add_props)>0) {add_props <- paste0(",",add_props, collapse='')}
   
   if (!is.na(query_params)) params <- query_params
-  else params <- paste0("fields=displayName,id,shortName,code,",add_props)
+  else params <- paste0("fields=name,displayName,id,shortName,code,",add_props)
   
   url <- paste0(url, '.json?',params, '&paging=false') # we dont' want to page the file
   req <- GET(url, authenticate(usr, pwd, type='basic'), accept_json()) # hit the server
@@ -275,7 +275,7 @@ postDHIS2_metaData <- function(obj,obj_type, usr, pwd, url, verbose=T) {
   # post meta data to DHIS2 instance
   # find the correct resource link
 
-  req <- POST(paste0(url,obj_type), authenticate(usr, pwd), body= toJSON(obj), content_type_json(), accept_json())
+  req <- POST(paste0(url,obj_type, "?importStrategy=CREATE_AND_UPDATE"), authenticate(usr, pwd), body= toJSON(obj), content_type_json(), accept_json())
     
   flush.console()
   return(req)

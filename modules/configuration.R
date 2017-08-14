@@ -14,6 +14,78 @@ library(rlist)
 # This function uses many of the functions below to combine into one cohesive scraping function. 
 # It takes in an excel configuration file, parses out each different part and then posts to the 
 # dhis2 server.  It currently supports data elements, category combos, categories, and category options.
+generateDHIS2_configFile <- function(dataSet, usr, pwd, url, filename) {
+  # Download all data related to a specific data set and it's dependencies
+  # place in the same format as the excel config file for later uploading
+  wb <- createWorkbook()
+  # data set first
+  addWorksheet(wb, 'Dataset')
+  dataSets <- getDHIS2_Resource('dataSets', usr, pwd, url, 'periodType')
+  dataSet <- getDHIS2_elementInfo(dataSets$id[dataSets$displayName == dataSet], 'dataSets', usr, pwd, url)
+  writeData(wb, 'Dataset', data.frame('Dataset Name' = dataSet$displayName, 
+                            'Frequency' = dataSet$periodType, 
+                            'OU Level' = NA, 
+                            'Data Set Attribute' = NA, 
+                            'CatCombo' = NA))
+  # data elements next
+  de <- lapply(dataSet$dataSetElements, function(x) {
+    tmp <- getDHIS2_elementInfo(x$dataElement$id, 'dataElements', usr, pwd, url)
+    list('dataElement' = tmp,'categoryCombo' = getDHIS2_elementInfo(tmp$categoryCombo$id, 'categoryCombos', usr, pwd, url))
+    })
+  
+  de_to_write <- rbind.fill.matrix(lapply(de, function(x) {
+    tmp <- data.frame('Data Element Name' = ifelse(is.null(x$dataElement$displayName), NA, x$dataElement$displayName), 
+               'Short Name' = ifelse(is.null(x$dataElement$shortName), NA, x$dataElement$shortName),
+               'Code' = ifelse(is.null(x$dataElement$code), NA, x$dataElement$code),
+               'Description' = ifelse(is.null(x$dataElement$description), NA, x$dataElement$description),
+               'Form Name' = ifelse(is.null(x$dataElement$formName), NA, x$dataElement$formName),
+               'Dataset' = dataSet$displayName,
+               'Data Element Group' = dataSet$displayName, # Intentionally leaving this as the same as the data set for now
+               'Value Type' = ifelse(is.null(x$dataElement$valueType), NA, x$dataElement$valueType),
+               'Aggregation Type' = ifelse(is.null(x$dataElement$aggregationType), NA, x$dataElement$aggregationType),
+               'Category Combo Name' = x$categoryCombo$displayName
+               )
+    if (x$categoryCombo$displayName != 'default') {
+      cats <- sapply(x$categoryCombo$categories, function(y) y$id)
+      tmp <- cbind(tmp, t(cats))
+      suppressWarnings(names(tmp)[11:ncol(tmp)] <- paste0("Category.", 1:length(cats), '.Name'))
+    }
+    tmp
+  }))
+  # categories
+  cats <- unique(de_to_write[,grep('Category', colnames(de_to_write))[-1]]) %>% .[!is.na(.)]
+  
+  cats <- lapply(cats, function(x) getDHIS2_elementInfo(x, 'categories', usr, pwd, url))
+  categories <- rbind.fill.matrix(lapply(cats, function(x) {
+    options <- sapply(x$categoryOptions, function(y) y$id)
+    tmp <- cbind('Category Name' = x$name, t(options))
+    colnames(tmp) <- c('Category Name', paste0('CategoryOptions', 1:length(options)))
+    tmp
+  }))
+  
+  catOptions <- getDHIS2_Resource('categoryOptions', usr, pwd, url)
+  cat_opt_replace <- catOptions$displayName
+  names(cat_opt_replace) <- catOptions$id
+  categories %<>% apply(2, function(x) revalue(x, cat_opt_replace, warn_missing=F))
+  
+  cat_names <- sapply(cats, function(x) {y <- x$displayName;names(y) <- x$id; y})
+  de_to_write[,grep('Category', colnames(de_to_write))] %<>% apply(2, function(i) revalue(i, cat_names,warn_missing = F))
+  
+  addWorksheet(wb, 'Data Elements')
+  writeData(wb, 'Data Elements', as.data.frame(de_to_write))
+  addWorksheet(wb, 'Category Options')
+  writeData(wb, 'Category Options', as.data.frame(categories))
+  
+  addWorksheet(wb, 'Data Element Groups')
+  writeData(wb, 'Data Element Groups', data.frame('Data Element Group Name' = dataSet$displayName, 'Short Name' = dataSet$displayName, 'Aggregation Type' = 'SUM'))
+  
+  if (missing(filename)) filename <- tempfile()
+  
+  saveWorkbook(wb, filename, overwrite=T)
+  return(filename)
+  
+}
+
 
 generateDHIS2_metaData <- function(filename, usr, pwd, url, overwrite=F, prompt_overwrite=T, verbose=F, object=NA) {
   # Take a meta data config file, scrape the data off and 
@@ -302,7 +374,7 @@ scrapeDHIS2_configFile <- function(filename, usr, pwd, url, warn=T, upload=T) {
   catCombos$id[grepl('default', catCombos[,1])] <- default_categoryCombo
   categoryCombo_ids <- catCombos$id # will use this with dataElement creation
 
-  catCombos <- catCombos[-grep(default_categoryCombo, catCombos$id),,drop=F]
+  catCombos <- catCombos[-grep(default_categoryCombo, catCombos$id),,drop=F] %>% .[!duplicated(.$name),]
   
   categoryCombos <- list()
   
@@ -428,18 +500,26 @@ uploadDHIS2_metaData <- function(config, usr, pwd, url) {
   # this performs no sanity checks and relies on dhis2 to handle the import process
   
   req <- lapply(names(config), function(x) {
-    if (length(config[[x]]) > 1) {
-      lapply(config[[x]], function(y) {
-        cat('\r', y$name, rep(' ', 50)) 
-        # if (any(grepl('href', names(y)))) putDHIS2_metaData(y, usr, pwd, y$href)
-         postDHIS2_metaData(y, x, usr, pwd, url) 
-      })
-    }
-    else if (length(config[[x]]) == 1) {
-      cat('\r', config[[x]][[1]]$name, rep(' ', 50)) 
-      # if (any(grepl('href', names(config[[x]][[1]])))) putDHIS2_metaData(config[[x]][[1]], usr, pwd, config[[x]][[1]]$href)
-       postDHIS2_metaData(config[[x]][[1]], x, usr, pwd, url)
-    }
+    # if (length(config[[x]]) > 1) {
+      # lapply(config[[x]], function(y) {
+      #   cat('\r', y$name, rep(' ', 50)) 
+      #   # if (any(grepl('href', names(y)))) putDHIS2_metaData(y, usr, pwd, y$href)
+      #    x <- postDHIS2_metaData(y, x, usr, pwd, url) 
+      #    print(x$status_code)
+      #    x
+      # })
+  
+    r <- postDHIS2_metaData(config[x], 'metadata', usr, pwd, url)
+    cat(x, r$status_code)
+    r
+    # }
+    # else if (length(config[[x]]) == 1) {
+    #   cat('\r', config[[x]][[1]]$name, rep(' ', 50)) 
+    #   # if (any(grepl('href', names(config[[x]][[1]])))) putDHIS2_metaData(config[[x]][[1]], usr, pwd, config[[x]][[1]]$href)
+    #    x <- postDHIS2_metaData(config[[x]][[1]], x, usr, pwd, url)
+    #    print(x$status_code)
+    #    x
+    # }
   })
   
   return(req)

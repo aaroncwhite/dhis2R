@@ -19,7 +19,7 @@ library(lubridate)
 cloneDHIS2_data <- function(usr.src, pwd.src, url.src, usr.dest, pwd.dest, url.dest, 
                             parent_ous = NULL, specific_dataSets = NULL, match_on='code', match_on_prefix='MOH-',
                             yearly_to_monthly=F, startDate = Sys.Date() - months(6), 
-                            endDate= Sys.Date() + years(1), files_dir='temp/') {
+                            endDate= Sys.Date() + years(1), files_dir='temp/', clean_files=T) {
   # Pull data from one dhis2 and post to another.  If specific_dataSets is specified, it will take each character vector
   # element and find those dataSets from the source dhis2 instance and attempt to download.  If NULL, it will attempt all.
   # this only works when uuids match for BOTH systems.  Otherwise it will kick errors. 
@@ -27,6 +27,8 @@ cloneDHIS2_data <- function(usr.src, pwd.src, url.src, usr.dest, pwd.dest, url.d
   # For our configurations, we're storing the source system id in the 'code' property and adding a prefix of 'MOH-'.
   # Change the match_on_prefix to match whatever has been set in the system.  match_on defaults to 'code' and match_on_prefix 
   # defaults to 'MOH-'
+  # files_dir is where the script will store temporary csvs of the successfull downloads and clean_files=T will remove 
+  # all of the files after completing. 
 
   if(!dir.exists(files_dir)) dir.create(files_dir)
   
@@ -104,7 +106,9 @@ cloneDHIS2_data <- function(usr.src, pwd.src, url.src, usr.dest, pwd.dest, url.d
   d %<>% convert_src_to_dest(match_on, match_on_prefix, de, orgUnits.dest, catOptCmbo)
   
   resp <- postDHIS2_Values(d[,c('dataElement', 'orgUnit', 'period', 'categoryOptionCombo', 'attributeOptionCombo', 'value', 'created', 'lastUpdated')], 1000, usr.dest, pwd.dest, url.dest)
-  # file.remove('temp/upload.csv')
+  if (clean_files) {
+    sapply(list.files(files_dir,full.names = T), file.remove)
+  }
   return(resp)
   
 }

@@ -15,6 +15,113 @@ library(lubridate)
   # Data Sets
   'dataEntryForms', 'dataSets')
 
+cloneDHIS2_metaData <- function(usr.src, pwd.src, url.src, usr.dest, pwd.dest, url.dest,
+                                dest_prefix, metaData_objects=.config_objects, parallel=T) {
+  # The big one.  Take a configuration from a source system and reproduce it in a destination system
+  # with some modifications.  Mainly, adding a prefix to all objects denoting it has been cloned (i.e. 
+  # 'MOH-' or something like that).  This script is opionated in that it will use the code property
+  # to store the prefix+id of the source system in the code property of the destination system.
+  # Due to shortName issues, it also stores that same code in the shortName.  This maintains the 
+  # requirement of a unique name, shortName, and code.  If the system uses shortName for analytics, 
+  # you'll need to come up with something else. You could still use this to upload; however, and then 
+  # update the uploaded metadata using patchDHIS2_metaData.
+  
+  # This is NOT for keeping two systems concurrent in their configuration.  It's mainly to keep the 
+  # configuration from one dhis2 available in the destination, but allow for separate configuration to 
+  # occur in the destination system. 
+  # change metaData_objects if you only want to clone certain aspects. 
+  
+  # Ex.
+  # > cloneDHIS2_metaData('admin', 'district', 'https://play.dhis2.org/demo/api/', )
+  
+  # get the source metaData
+  md <- getDHIS2_metadata(usr.src, pwd.src, url.src, objects = metaData_objects)
+  
+  # We don't use groupsets, so we'll completely remove those plus some other
+  # system specific things that we dont' want to bring over from the source system
+  ignore <- c('user', 'organisationUnits', 'userGroupAccesses', 'href', 'access', 'dataElementGroupSet', 'indicatorGroupSets', 'dimension')
+  
+  # Make some modifications to all meta data elements.  Mainly adding
+  # a prefix to name and display name, and making a code that has the 
+  # dest_prefix+source_id
+  for (i in 1:length(md)) {
+    md[[i]] %<>% lapply(function(x) {
+      x$code <- paste0(dest_prefix, x$id)
+      x$name <- paste0(dest_prefix,x$name)
+      # This is an intentional decision to make shortName unusable
+      # it's an unnecessary property for metadata and we don't use it. 
+      x$shortName <- x$code 
+      x$displayShortName <- x$shortName 
+      
+      # This is also an intentional omission for now.  Name is updating the 
+      # database language, and then use that same value for displayName. This 
+      # could backfire if the database language is set to french and the user 
+      # account performing this action is set to english.  it would overwrite
+      # all display names to the french version plus the prefix. 
+      x$displayName <- x$name
+      x$publicAccess <- 'r-------'
+      x[!(names(x) %in% ignore)]
+    })
+  }
+  
+  
+  
+  # First thing we'll do is find all the id and dimension elements
+  # in the metadata list.  these are key identifiers and we'll want to 
+  # cascade update across the entire metadataset to ensure things match
+  # when we upload to the new system. 
+  obj_map <- map_property(md, c('id', 'dimension'))
+  
+  # extract the unique values we're replacing
+  ids_to_replace <- sapply(obj_map, function(x) x$property_value) %>% unique()
+  
+  # generate new ids in the destination system to use
+  ids_to_use <- getDHIS2_systemIds(length(ids_to_replace), usr.dest, pwd.dest,url.dest)
+  
+  # validate our new ids don't collide with ids in the old system (if they did, we might inadvertently assign objects in the wrong place)
+  while (T) {
+    test <- ids_to_replace %in% ids_to_use
+    if (any(test)) {
+      print('Some ids matched in the source system to the newly generated ids in the destination system, trying to get different ones...')
+      ids_to_use %<>% .[!test] %>% c(getDHIS2_systemIds(length(which(test)), usr.dest, pwd.dest, url.dest))
+      
+    }  
+    else break
+  }
+  
+  # Make the value_pair dataframe to pass to find_replace
+  value_pairs <- data.frame('find' = ids_to_replace, 'replace' = ids_to_use, stringsAsFactors = F)
+  
+  # For each row, recursively replace the value across the metadataset.  Since this is 
+  # a huge task, there is an option to run it in parallel
+  md <- find_replace(md, value_pairs, obj_map, parallel = parallel)
+  
+  # Now map the numerator and denominator elements (just in the indicators section)
+  obj_nd <- map_property(md$indicators, c('numerator', 'denominator'))
+  # use the same value_pair set and update the numerator and denominator references to look for the
+  # new objects
+  md$indicators <- find_replace(md$indicators, value_pairs, obj_nd, parallel = F)
+  
+  # Let's do a double check and make sure all of the new ids we expect to see are there
+  new_obj_map <- map_property(md, 'id', ignore=ignore)
+  check_on_ids <- sapply(new_obj_map, function(x) x$property_value) %>% unique()
+  any(check_on_ids == ids_to_replace)
+  all(check_on_ids == ids_to_use)
+  
+  # last thing is to update the T/F objects.  Because of how dhis2 expects to see the information
+  # we need to change TRUE and FALSE to 'true' and 'false'. Why does it give you information back 
+  # as TRUE and FALSE?  Unclear. I just know it needs to be changed. 
+  obj_tf <- map_property(md, c('externalAccess', 'zeroIsSignificant', 'annualized'))
+  md <- find_replace(md, data.frame('find' = c(TRUE, FALSE), 'replace' = c('true', 'false')), obj_tf, parallel = F)
+  
+  # Finally, upload the new metadata.  200s are good.  
+  r <- uploadDHIS2_metaData(md, usr.dest, pwd.dest, url.dest)
+  
+  # we'll return the newly formatted metadata object and the response we got just incase something goes wrong. 
+  # the metadata can still be re-uploaded using uploadDHIS2_metaData again. 
+  return(list('metaData' = md, 'response' = r))
+}
+
 
 cloneDHIS2_data <- function(usr.src, pwd.src, url.src, usr.dest, pwd.dest, url.dest, 
                             parent_ous = NULL, specific_dataSets = NULL, match_on='code', match_on_prefix='MOH-',
@@ -112,7 +219,6 @@ cloneDHIS2_data <- function(usr.src, pwd.src, url.src, usr.dest, pwd.dest, url.d
   return(resp)
   
 }
-
 convert_src_to_dest <- function(df, match_on, match_on_prefix, dataElements, organisationUnits, categoryOptionCombos) {
   df$dataElement %<>% revalue(make_revalue_map(gsub(match_on_prefix,"", dataElements[,match_on]), dataElements$id), warn_missing = F)
   df$orgUnit %<>% revalue(make_revalue_map(gsub(match_on_prefix, "", organisationUnits[,match_on]), organisationUnits$id), warn_missing = F)

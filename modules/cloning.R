@@ -19,7 +19,7 @@ library(lubridate)
 cloneDHIS2_data <- function(usr.src, pwd.src, url.src, usr.dest, pwd.dest, url.dest, 
                             parent_ous = NULL, specific_dataSets = NULL, match_on='code', match_on_prefix='MOH-',
                             yearly_to_monthly=F, startDate = Sys.Date() - months(6), 
-                            endDate= Sys.Date() + years(1), existing_upload_file=NA) {
+                            endDate= Sys.Date() + years(1), files_dir='temp/') {
   # Pull data from one dhis2 and post to another.  If specific_dataSets is specified, it will take each character vector
   # element and find those dataSets from the source dhis2 instance and attempt to download.  If NULL, it will attempt all.
   # this only works when uuids match for BOTH systems.  Otherwise it will kick errors. 
@@ -28,7 +28,7 @@ cloneDHIS2_data <- function(usr.src, pwd.src, url.src, usr.dest, pwd.dest, url.d
   # Change the match_on_prefix to match whatever has been set in the system.  match_on defaults to 'code' and match_on_prefix 
   # defaults to 'MOH-'
 
-  if(!dir.exists('temp/')) dir.create('temp')
+  if(!dir.exists(files_dir)) dir.create(files_dir)
   
   from.ds <- getDHIS2_Resource('dataSets', usr.src, pwd.src, url.src, 'periodType')
   upload_results <- list()
@@ -85,13 +85,13 @@ cloneDHIS2_data <- function(usr.src, pwd.src, url.src, usr.dest, pwd.dest, url.d
         # trim down to just orgUnits in our system
         d <- d[d$orgUnit %in% orgUnits.dest$id,]
         
-        write.csv(d, paste0('temp/', gsub("\\/", "-", from.ds$displayName[i]), ".csv"), row.names = F)
+        write.csv(d, paste0(files_dir, gsub("\\/", "-", from.ds$displayName[i]), ".csv"), row.names = F)
       }
     }
   }
   d <- data.frame()
-  for (f in list.files('temp')) {
-    d %<>% rbind.fill(read.csv(paste0('temp/', f), stringsAsFactors = F))
+  for (f in list.files(files_dir)) {
+    d %<>% rbind.fill(read.csv(paste0(files_dir, f), stringsAsFactors = F))
   }
   # d <- read.csv(d, stringsAsFactors = F)
   
@@ -110,10 +110,10 @@ cloneDHIS2_data <- function(usr.src, pwd.src, url.src, usr.dest, pwd.dest, url.d
 }
 
 convert_src_to_dest <- function(df, match_on, match_on_prefix, dataElements, organisationUnits, categoryOptionCombos) {
-  df$dataElement %<>% revalue(make_revalue_map(gsub(match_on_prefix,"", dataElements$code), dataElements$id), warn_missing = F)
-  df$orgUnit %<>% revalue(make_revalue_map(gsub(match_on_prefix, "", organisationUnits$code), organisationUnits$id), warn_missing = F)
-  df$categoryOptionCombo %<>% revalue(make_revalue_map(gsub(match_on_prefix,"", categoryOptionCombos$code), categoryOptionCombos$id), warn_missing = F)
-  df$attributeOptionCombo %<>% revalue(make_revalue_map(gsub(match_on_prefix,"", categoryOptionCombos$code), categoryOptionCombos$id), warn_missing = F)
+  df$dataElement %<>% revalue(make_revalue_map(gsub(match_on_prefix,"", dataElements[,match_on]), dataElements$id), warn_missing = F)
+  df$orgUnit %<>% revalue(make_revalue_map(gsub(match_on_prefix, "", organisationUnits[,match_on]), organisationUnits$id), warn_missing = F)
+  df$categoryOptionCombo %<>% revalue(make_revalue_map(gsub(match_on_prefix,"", categoryOptionCombos[,match_on]), categoryOptionCombos$id), warn_missing = F)
+  df$attributeOptionCombo %<>% revalue(make_revalue_map(gsub(match_on_prefix,"", categoryOptionCombos[,match_on]), categoryOptionCombos$id), warn_missing = F)
   return(df)
 }
 

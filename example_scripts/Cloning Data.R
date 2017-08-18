@@ -18,7 +18,9 @@ setDHIS2_credentials(location)
 start_date <- (Sys.Date() - 1) - months(n_months_history)
 end_date <- Sys.Date() - 1
 # run the update
-cloneDHIS2_data(usr.src, pwd.src, url.src, # source credentials
+r <- cloneDHIS2_data(usr.src, pwd.src, url.src, # source credentials
                 usr.dest, pwd.dest, url.dest, # destination credentials
                 startDate = start_date, endDate = end_date, # timeframe
                 match_on = 'id', match_on_prefix = '') # matching parameters if not using matching id values
+
+write(toJSON(r), 'cloning_update.json')

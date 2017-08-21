@@ -1,9 +1,9 @@
 # Sample Cloning Script
 # Assumes you already have all metadata in place from the source server in the destination server
 
-dhis2R_dir <- '/home/dhis/R tool' # "./" or "/home/aaron/dhis2R" etc
+dhis2R_dir <- '/home/dhis/R/' # "./" or "/home/aaron/dhis2R" etc
 location <- 'some_location_in_credentials' # Edit the credentials file to make sure the name matches.  Could be something like 'haiti', 'malawi', etc
-n_months_history <- 6
+n_months_history <- 2
 
 # The script-------------------------------------------------
 setwd(dhis2R_dir)

@@ -47,13 +47,24 @@ setDHIS2_credentials('demo', credentials_file = '.credentials_template')
 ```
 Let's break that down.  The first part *'demo'* says we want to use the dhis2.org demo server.  But where did that come from?  You probably guessed it, I've stored that information in a file called *.credentials_template* and explicitly told setDHIS2_credentials to look there for the information. 
 
-If you plan on using this quite a  bit though, always having to tell the function where to look for credentials can be annoying, so by default it looks for a file called *.credentials*.  I suggest renaming the template file and then filling in your own specific access locations and credentials.  Here are a few more examples assuming you have made a *.credentials* file now:
+If you plan on using this quite a  bit though, always having to tell the function where to look for credentials can be annoying, so by default it looks for a file called *.credentials*.  I suggest renaming the template file and then filling in your own specific access locations and credentials.  The following code will do that for you if don't already have a *.credentials* file. 
+```{r}
+if (!file.exists('.credentials')) file.copy('.credentials_template', '.credentials')
+```
+Open the file and modify the examples as needed. We'll be using the *dhis2_demo* profile for these, so make sure to leave that one!  
+
+_**Important**_ Make sure to use double quotes ("") around all of the profiles and profile objects.  Since this is a json file, R gets confused if you use single quotes ('').
+
+Here are a few more examples assuming you have made a *.credentials* file now:
 ```{r}
 # If you already know which profile you want to load
-setDHIS2_credentials('demo') # see how I didn't need to declare the filename?
+setDHIS2_credentials('dhis2_demo') # see how I didn't need to declare the filename?
 
+```
+```{r}
 # If you're not sure, or want R to ask you each time, just leave the whole thing blank to have a prompt based on the profiles defined in .credentials
 setDHIS2_credentials()
+# (check your console for the prompt)
 ```
 
 
@@ -110,9 +121,9 @@ print(specific_example$displayName)
 Here are a couple more interacting with that data element object we just downloaded:
 ```{r}
 # These are all wrapped in cat functions, but it is the same idea, just prettier on the eyes. 
-cat('Aggregation Type:', specific_example$aggregationType,'')
-cat('Value Type:', specific_example$valueType,'')
-cat('Category Combo:', specific_example$categoryCombo$id,'')
+cat('Aggregation Type:', specific_example$aggregationType,'\n')
+cat('Value Type:', specific_example$valueType,'\n')
+cat('Category Combo:', specific_example$categoryCombo$id,'\n')
 
 
 ```
@@ -167,6 +178,8 @@ The same principles can be applied to other object types too.  The API is well-s
 ```{r}
 # Use this code block to investigate
 
+
+
 # Question 1 -------------------------------------------------------- 
 # What is the organisation level of Njandama MCHP?
 
@@ -193,5 +206,30 @@ if (!is.null(organisation_unit_detail) && organisation_unit_level == 4) cat('Org
 if (!is.null(organisation_unit_detail) && n_dataSets == 21) cat('Number of data sets correct!') else ('Check your data set code')
 
 ```
+
+#### EXERCISE 3:
+What how many dataElements are assigned to the "HIV Care Monthly" dataSet?
+```{r}
+# Step 1: Get the dataSet information for this dhis2 instance
+ds <- NULL
+
+# Step 2: Find the HIV Care Monthly dataSet id value
+specific_id <- NULL
+
+# Step 3: Get the HIV Care Monthly dataSet detail
+hiv_care <- NULL
+
+# Step 4: Find just the dataElement section
+data_elements_hiv_care <- NULL
+
+# Step 5: Count the number of dataElements assigned (use length() to count the number of elements assigned)
+n_de <- NULL
+
+
+# Check the answer
+if (!is.null(n_de) && n_de == length(hiv_care$dataSetElements)) cat('Great!\n') else cat('Check your answer!\n')
+```
+
+
 
 That's about it for the GET functions.  You should now understand how to get information about a specific object type within DHIS2, find detailed information about a specific instance of that object type, and explore the results.  When is this useful?  All the time.  Using the UI can be tedious to double check the valueType of every data element you just uploaded or to see where an organisation unit has been placed in the hierarchy. This makes it much easier to do batch processing of data elements or any other type of DHIS2 data.

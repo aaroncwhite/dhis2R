@@ -22,9 +22,11 @@ createDHIS2_DataSet <- function(id, name, shortName = NA, description = "", peri
     dataElements <- list()
   }
   
-  
-  upload <- list('id' = id, 'name'= name,'shortName'= shortName, 'periodType' = periodType, 'description' = description,
+  upload <- list('name'= name,'shortName'= shortName, 'periodType' = periodType, 'description' = description,
                  'dataSetElements' = dataElements, 'timelyDays'= timely)
+  if (!is.null(id)) upload <- append(list('id' = id), upload)
+  
+  
   # incase we passed any other properties, add them now.
   upload <- append(upload, other_properties)
   
@@ -43,9 +45,11 @@ createDHIS2_DataElementGroup <- function(id, name, shortName = NA, aggregationTy
   dataElements <- lapply(dataElements, function(a) list('id' = a))
   
   # these are all necessary elements
-  upload <- list('id' = id, 'name' = name, 'shortName'=stri_sub(shortName, length=50),
+  upload <- list('name' = name, 'shortName'=stri_sub(shortName, length=50),
                  'aggregationType' = aggregationType, 'dataElements'=dataElements, 'description' = description
                  )
+  if (!is.null(id)) upload <- append(list('id' = id), upload)
+  
   
   # these are optional
   upload <- append(upload, other_properties)
@@ -64,8 +68,9 @@ createDHIS2_DataElement <- function(id, name, shortName = NA, code="", descripti
   if (is.na(shortName) | is.null(shortName) | nchar(shortName) > 50) {shortName <- name} # make sure we have something for short name to post
   
   # these are all necessary elements
-  upload <- list('id' = id, 'name' = name, 'shortName'=stri_sub(shortName, length=50),'code' = code, 'description'=description, 'domainType' = domainType, 'formName'= formName, 'valueType' = valueType, 
+  upload <- list('name' = name, 'shortName'=stri_sub(shortName, length=50),'code' = code, 'description'=description, 'domainType' = domainType, 'formName'= formName, 'valueType' = valueType, 
                  'aggregationType' = aggregationType, 'categoryCombo'=list('id' = categoryCombo))
+  if (!is.null(id)) upload <- append(list('id' = id), upload)
   
   # these are optional
   upload <- append(upload, other_properties)
@@ -81,7 +86,9 @@ createDHIS2_CategoryCombo <- function(id, name, categories, shortName = NA, data
   
 
   
-  upload <- list('id' = id, 'name' = name, 'shortName'=shortName, 'dataDimensionType' = dataDimension)
+  upload <- list('name' = name, 'shortName'=shortName, 'dataDimensionType' = dataDimension)
+  if (!is.null(id)) upload <- append(list('id' = id), upload)
+  
   
   categories %<>% .[!is.na(.)]
   category_list <- list()
@@ -104,7 +111,11 @@ createDHIS2_Category <- function(id, name, options=c(), shortName = NA, dataDime
     categoryOptions <- append(categoryOptions, list(list('id'= o)))
   }
   
-  upload <- list('id' = id, 'name' = name, 'shortName'=shortName, 'categoryOptions'= categoryOptions, 'dataDimensionType' = dataDimension)
+  upload <- list('name' = name, 'shortName'=shortName, 'categoryOptions'= categoryOptions, 'dataDimensionType' = dataDimension)
+  
+  if (!is.null(id)) upload <- append(list('id' = id), upload)
+  
+  
   upload <- append(upload, other_properties)
   return(upload)
 }
@@ -112,13 +123,15 @@ createDHIS2_Category <- function(id, name, options=c(), shortName = NA, dataDime
 createDHIS2_CategoryOption <- function(id, name, add_props=list()) {
   # returns list for upload using postDHIS2_metaData()
   # this one is pretty simple
-  up <- list('name'=name, 'id' = id)
-  up <- append(up, add_props)
-  return(up)
+  upload <- list('name'=name)
+  if (!is.null(id)) upload <- append(list('id' = id), upload)
+  
+  upload <- append(upload, add_props)
+  return(upload)
 }
 
 # TRACKER SPECIFIC ------------------------------------------------------------------------
-createDHIS2_program <- function(name, shortName = NA, description = '', trackedEntity, 
+createDHIS2_program <- function(id, name, shortName = NA, description = '', trackedEntity, 
                                 trackedEntityAttributes=NA, programType = 'WITH_REGISTRATION',
                                 other_properties= list()) {
   if (is.na(shortName) | is.null(shortName) ) {shortName <- name} # make sure we have something for short name to post
@@ -128,23 +141,26 @@ createDHIS2_program <- function(name, shortName = NA, description = '', trackedE
                   'programType' = programType)
   
   if (!is.na(trackedEntityAttributes)) {payload <- list('programTrackedEntityAttributes' = list(trackedEntityAttributes))}
+  if (!is.null(id)) payload <- append(list('id' = id), payload)
   
   payload <- append(payload, other_properties)
   
   return(payload)
 }
 
-createDHIS2_programStage <- function(name, programId, dataElements = NA, other_properties=list()) {
+createDHIS2_programStage <- function(id, name, programId, dataElements = NA, other_properties=list()) {
   payload <- list('name' = name, 'program' = list('id' = programId)) 
   if (!is.na(dataElements)) {
     payload <- append(payload, list('programStageDataElements' = list(lapply(dataElements, function(a) list('id' = a)))))
   }
+  if (!is.null(id)) payload <- append(list('id' = id), payload)
+  
   payload <- append(payload, other_properties)
   return(payload)
 }
                                      
 
-createDHIS2_trackedEntityAttribute <- function(name, shortName=NA, aggregationType = 'SUM', 
+createDHIS2_trackedEntityAttribute <- function(id, name, shortName=NA, aggregationType = 'SUM', 
                                                valueType = 'INTEGER', optionSetId = NA, other_properties=list()) {
   # create a trackedEntityAttribute for use with Tracker programs
   if (is.na(shortName) | is.null(shortName) ) {shortName <- name} # make sure we have something for short name to post
@@ -153,6 +169,7 @@ createDHIS2_trackedEntityAttribute <- function(name, shortName=NA, aggregationTy
   
   if (!is.na(optionSetId)) {payload <- append(payload, list('optionSetValue' = 'TRUE', 'optionSet' = list('id' = optionSetId)))}
   else {payload <- append(payload, list('optionSetValue' = 'FALSE'))}
+  if (!is.null(id)) payload <- append(list('id' = id), payload)
   
   payload <- append(payload, other_properties)
   
@@ -160,14 +177,20 @@ createDHIS2_trackedEntityAttribute <- function(name, shortName=NA, aggregationTy
   
 }
 
-createDHIS2_optionSet <- function(name, option_ids = list()) {
+createDHIS2_optionSet <- function(id, name, option_ids = list()) {
   # Make an option set for use with Tracker programs
-  return(list('name' = name, 'options' = option_ids))
+  payload <- list('name' = name, 'options' = option_ids)
+  if (!is.null(id)) payload <- append(list('id' = id), payload)
+  
+  return(payload)
 }
 
 createDHIS2_option <- function(name, code) {
   # make an option for an option set
-  return(list('name' = name, 'code' = code))
+  payload <- list('name' = name, 'code' = code)
+  if (!is.null(id)) payload <- append(list('id' = id), payload)
+  
+  return(payload)
 }
 
 add_href <- function(obj, obj_type, url) {
@@ -176,7 +199,7 @@ add_href <- function(obj, obj_type, url) {
 }
 
 # USERS -----------------------------------------------------------------------------------
-createDHIS2_user <- function(firstName, surname, username, password, userRoles, organisationUnits, add_props=list()) {
+createDHIS2_user <- function(id, firstName, surname, username, password, userRoles, organisationUnits, add_props=list()) {
   # Create a dhis2 user object for upload, required properties must be stated, additional properties/attributes
   # can be declared with add_props
   
@@ -189,6 +212,7 @@ createDHIS2_user <- function(firstName, surname, username, password, userRoles, 
                                         'userRoles' = lapply(userRoles, function(a) list('name' = a))),
                'organisationUnits' = lapply(organisationUnits, function(a) list('name' = a))
   )
+  if (!is.null(id)) user <- append(list('id' = id), user)
   
   user <- append(user, add_props)
   
@@ -197,7 +221,7 @@ createDHIS2_user <- function(firstName, surname, username, password, userRoles, 
 }
 
 # ORANISATION UNITS -----------------------------------------------------------------------
-createDHIS2_OrgUnit <- function(name, shortName=NA, description='', 
+createDHIS2_OrgUnit <- function(id, name, shortName=NA, description='', 
                                 openingDate = Sys.Date(), parentId=NA, add_props=list()) {
   # Create an organisation unit in dhis2
   if (is.na(shortName) | is.null(shortName) ) {shortName <- substr(name, 1, 49)} # make sure we have something for short name to post
@@ -205,13 +229,15 @@ createDHIS2_OrgUnit <- function(name, shortName=NA, description='',
   up <- list('name' = name, 'shortName' = shortName, 
              'description' = description, 'openingDate' = openingDate)
   if (!is.na(parentId)) {up <- append(up, list('parent' = list('id' = parentId)))}
+  if (!is.null(id)) up <- append(list('id' = id), up)
+  
   up <- append(up, add_props)
   
   return(up)
 }
 
 # FORMS -----------------------------------------------------------------------------------
-createDHIS2_report <- function(name, content, type='HTML',
+createDHIS2_report <- function(id, name, content, type='HTML',
                                reportParams = list('paramReportingPeriod' = "true", 
                                                    'paramOrganisationUnit' = "true"),
                                relativePeriods = list('lastMonth' = 'true', 'thisMonth' = "true")) {
@@ -219,12 +245,14 @@ createDHIS2_report <- function(name, content, type='HTML',
   # since our reports will most likely be monthly
   payload <- list('name' = name, 'designContent' = content,'type' = type, 'reportParams' = reportParams,
                   'relativePeriods' = relativePeriods)
+  if (!is.null(id)) payload <- append(list('id' = id), payload)
+  
   return(payload)
 }
 
 
 # TRANSLATIONS ----------------------------------------------------------------------------
-createDHIS2_translation <- function(value, property, locale, obj_id, className) {
+createDHIS2_translation <- function(id, value, property, locale, obj_id, className) {
   upload <- list('className'=className, 
                  'locale'=locale,
                  'property'=property, 
@@ -237,6 +265,8 @@ createDHIS2_translation <- function(value, property, locale, obj_id, className) 
                                  'write'='false',
                                  'manage' = 'false')
                   )
+  if (!is.null(id)) upload <- append(list('id' = id), upload)
+  
   return(upload)
 }
 

@@ -5,6 +5,12 @@ output: html_notebook
 ---
 The primary goal of these functions was to make it easier to interact and update DHIS2 from a comfortable programming environment (for me at least) and integrate with existing analysis workflows.  As the DHIS2 API keeps changing, some of these functions are starting to break, but the main interactions are still working. These functions have been tested and working with R version 3.2.4 as of January 2017. It's possible that RCurl works differently for R 3.3.x, so be aware. 
 
+```{r "setup", include=FALSE}
+# This makes sure we're using the root dhis2R directory when running the file
+require("knitr")
+opts_knit$set(root.dir = "../")
+```
+
 Note:
 This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
 
@@ -12,7 +18,7 @@ Try executing this chunk by clicking the *Run* button within the chunk or by pla
 
 ```{r}
 # Import the functions and your username, password, and url settings defined in settings.R
-source('../settings.R') # The ../ means to look in the parent directory
+source('settings.R') 
 ```
 
 # Creating and posting metadata
@@ -24,19 +30,37 @@ The general processes goes like this:
 ## Payload Creation
 Before we can upload data to the system, we need to make sure it's in the right format.  If it's not, DHIS2 will get angry, and you'll spend hours banging your head against the desk wondering why it doesn't work. Let me spare you some of that agony. 
 
+## ID generation
+DHIS2 expects each object to have an id associated with it.  These are 13 character alpha-numeric codes that are unique to all of the different pieces of metadata configuration you could ever imagine.  There's something like 2e10^23 possible combinations, so the likelihood of ids overlapping is very, very small.  Still, sometimes we want to make sure there's _no_ chance of that happening, so we can have DHIS2 generate ones as we need to. This is more important if you're pulling metadata from somewhere else and trying to create the same thing in a different system, but all of the *createDHIS2_x* expect an ID value. 
+
+We can solve this problem in two ways.  First, let's pull an ID value. 
+```{r}
+id_val <- getDHIS2_systemIds(1, usr, pwd, url)
+print(id_val)
+```
+What did this just do?  The first parameter of *getDHIS2_systemIds* is *n_ids*.  In this case, we said just give us one. You can ask for as many as you need though.  The ids are unique and persist for up to two weeks before going back into the pool of available id values. So if you request some, they are guaranteed unique during the time you're configuring things.
+
+The other option is to pass *NULL* for the id.  The creation functions will ignore it.  Let's look at that now. 
+
 ### createDHIS2_X
 DHIS2 uses json and R likes lists.  Luckily, there are libraries that switch things back and forth for us.  On top of that, there are several functions that help the process along, fill in certain default values that we might want, and gives you back a nice package ready to send up to the system. In the console, type "createDHIS2_" to see the list of options that are currently available. There's quite a few!  We'll just look at a couple examples for now. 
 
-Let's make a data element payload for "ANC 1st Visit" using *createDHIS2_DataElement()*.
+Let's make a data element payload for "ANC 1st Visit" using *createDHIS2_DataElement()*.  The creation helpers expect an *id* value as the first argument of the function always.  Like we just mentioned above, you can either give it an id value or pass *NULL* and it will be ignored. Let's try. 
 ```{r}
-example_data_element <- createDHIS2_DataElement('ANC 1st Visit')
+example_data_element <- createDHIS2_DataElement(NULL, 'ANC 1st Visit')
+example_data_element
+```
+
+Here's an example using the ID value you just pulled from the system. 
+```{r}
+example_data_element <- createDHIS2_DataElement(id_val, 'ANC 1st Visit')
 example_data_element
 ```
 
 See how the function made it much easier to create all of that?  You gave it a name, the function made the rest of the required information for you based on some defaults.  Let's make a much more detailed version. 
 
 ```{r}
-example_data_element <- createDHIS2_DataElement('Womens Health- ANC 1st Visit',
+example_data_element <- createDHIS2_DataElement(NULL, 'Womens Health- ANC 1st Visit',
                                                 shortName = 'ANC 1st Visit',
                                                 description = 'The first time a woman visited the clinic for antenatal care',
                                                 valueType = 'INTEGER_POSITIVE',
@@ -47,13 +71,14 @@ example_data_element
 
 The process is similar for all of the createDHIS2_X functions.  Here's a category example:
 ```{r}
-example_category <- createDHIS2_Category('Sex', options = c('Female','Male'))
+ids <- getDHIS2_systemIds(2, usr, pwd, url)
+example_category <- createDHIS2_Category(NULL, 'Sex', options = ids)
 example_category
 ```
 
 _*NOTE:*_ The API is no different than the UI.  When actually configuring the system, you must create category options before being able to create categories, categories before category combinations, etc. 
 
-When a createDHIS2_X has an options argument, it accepts a character vector of the name options (c('Female', 'Male') in the example above).
+When a createDHIS2_X has an options argument, it accepts a character vector of the id values options.  You'd need to create the categoryOptions, store the newly created id values, *then* create your category, just as you would using the UI Maintenance application. 
 
 ### Posting data
 Time to actually post this data!  Let's upload the data element we just made. POST is used when creating anything new that does not already exist in the system. Use *postDHIS2_metaData()* for this. Just like the getDHIS2_X commands, this requires the payload, object_type, username, password, and url.
@@ -79,43 +104,245 @@ Let's use *getDHIS2_elementInfo()* to see how DHIS2 took our information and cha
 dhis2_example_data_element <- getDHIS2_elementInfo(post_result$response$uid, 'dataElements', usr, pwd, url)
 dhis2_example_data_element
 ```
-The system has added several other important parameters upon processing the payload you sent.  Take a look in the Maintenance app of the demo site.  Your data element is there! (https://play.dhis2.org/demo/)
+The system has added several other important properties upon processing the payload you sent.  Take a look in the Maintenance app of the demo site.  Your data element is there! (https://play.dhis2.org/demo/)
 
 ### A little more complicated now...
 That was easy, but that's because we didn't have to define any related objects.  Let's go through the process of making a category combination. We'll make a combination with two categories- Age and Trimester.
 
-First, we need to make the category options. This will take advantage of looping and lapply.  We'll do it both ways. 
+First, we need to make the category options. This will take advantage of looping and lapply.  
 ```{r}
 trimesters <- c('1st', '2nd', '3rd')
-for (trimester in trimesters) {
-  # we won't save the options here, but 
-}
+categoryOptions <- lapply(trimesters, function (x) {# this is a lambda function that is just used once when lapply runs
+  createDHIS2_CategoryOption(NULL, x)
+})
+print(categoryOptions)
 ```
 
+See how the *categoryOptions* object has three elements now and each relates to the trimesters we described above?  *lapply* loops over each element in trimesters and runs the lambda function.  The final result is a list where each first-level element relates to the original three elements we gave it. 
+
+Let's post those to DHIS2 now. First, let's do them individually.  This will use *lapply* again to loop over each thing we want to create. 
+```{r}
+created_category_options <- lapply(categoryOptions, function(x) {# the lambda function again
+  postDHIS2_metaData(x, 'categoryOptions', usr, pwd, url)
+})
+print(created_category_options)
+```
+
+Success!  They all came back as 201 statuses.  We can investigate the responses more in depth to get the object uids. We'll overwrite the existing object and take the *content()* of each response, then pull the uid from it.  I'm going to use *sapply* this time, which is basically the same as *lapply* but the response is a vector instead of list. 
+```{r}
+created_category_options <- sapply(created_category_options, function(x) {
+  x <- content(x)
+  x$response$uid # by doing this, i'm dropping all of the other properties in the response we got from DHIS2
+})
+print(created_category_options)
+```
+
+We can use these IDs for the newly created options to make a category called "Trimester". 
+```{r}
+category <- createDHIS2_Category(NULL, 'Trimester', options=created_category_options)
+print(category)
+```
+
+See what happened?  We took the IDs from the first creation process and used them to make this category.  *createDHIS2_Category()* made sure to add a *shortName* and *dataDimensionType* properties for us.  Let's upload it now.
+```{r}
+created_category <- postDHIS2_metaData(category, 'categories', usr, pwd, url)
+created_category <- content(created_category)
+print(created_category)
+```
+
+Just like when we created categoryOptions, we get a 201 response and a new uid.  These are the same exact steps that are happening when you use the UI, just faster.  At least if you're doing it in large quantities.  The DHIS2 applications actually use the same API to do this creation process internally.  As the creators say, "We eat our own dogfood."  
+
+### Current creation helper functions
+There are multiple payload creation functions.  Here are the options currently:
+
+ endpoint                 function                     
+ ----------------------- ----------------------------------- 
+ dataSets                 createDHIS2_DataSet          
+ dataElementGroups        createDHIS2_DataElementGroup 
+ dataElements             createDHIS2_DataElement      
+ categoryCombos           createDHIS2_CategoryCombo    
+ categories               createDHIS2_Category
+ categoryOptions          createDHIS2_CategoryOption
+ optionSets               createDHIS2_OptionSet
+ options                  createDHIS2_Option
+ organisationUnits        createDHIS2_OrgUnit
+ programs                 createDHIS2_Program
+ programStages            createDHIS2_ProgramStage
+ reports                  createDHIS2_Report
+ trackedEntityAttributes  createDHIS2_TrackedEntityAttribute
+ users                    createDHIS2_User
+
+Each *createDHIS2_x* function will expect an *id* first and then the object specific properities.  Some have been left with default values.  Have a look at the *payload_creation.R* file for more details on how each function handles its respective object.  
+
+### Exercise 1
+Now you try it.  For this first exercise, let's make a new category called "Mother's Age at Delivery" with the options of "< 15", "15 - 18", "19-24", and "25-49".  Remember, you'll need to create the options first, and then make the category. 
+```{r}
+# Make the categoryOptions first and store the ID values in an object called "categoryOptions_created"
+categoryOptions <- NULL # replace NULL with a character vector of the options you want to create
 
 
-##### Exercise 1
+# Convert each character string into the proper format for upload to DHIS2
+# Hint: use createDHIS2_CategoryOption() and lapply() to do this for each object you have
+categoryOptions_for_upload <- NULL # replace NULL with your code
 
+# Create each categoryOption in the DHIS2 system
+# Hint: use postDHIS2_metaData() and lapply() to do this for each object you have
+categoryOptions_created <- NULL # replace NULL with your code
 
+```
 
+Hopefully, by now you're learning how powerful *lapply()* can be when combined with the specific DHIS2 related helper functions.  Often you're repeating the same operation multiple times, and this let's you do it in less lines of code. Now let's do a quick check on your code.
+```{r}
+if (all(sapply(categoryOptions_created, function(x) x$status_code == 201))) cat('Looks good!\n') else cat('Looks like something went wrong!\n')
+```
 
+Great, so we've created the categoryOptions we need, now let's make the category now.  Remember, you'll first need to extract the created ID values of those options you created and use them for the category creation. 
+```{r}
+# Extract just the uid of the new categoryOption objects created.  Your categoryOptions_created object has all the information you need.
+# Hint: use content() on an individual response to parse into an R friendly format. You're probably catching the theme now, use lapply to do 
+# it across all of the objects you have. 
+categoryOptions_created_content <- NULL # replace NULL with your code
 
+# Now pull just the uids out.  They are located at parsed_object$response$uid. Use sapply this time so you just have a character vector of uids. 
+categoryOption_uids <- NULL # replace NULL with your code
 
+# Now make the category
+# Hint: use createDHIS2_Category().  Since you're only making one category, no need to use lapply this time!
+category_for_upload <- NULL # replace NULL with your code
 
+# And upload it
+category_created <- NULL # replace NULL with your code
 
+# Check the response was successful
+if (category_created$status_code == 201) cat('Looks good!\n') else cat('Looks like something went wrong!\n')
+```
 
+Good work!  Hopefully, you got a 201 response back from DHIS2 and you've successfully created a category called "Mother's Age at Delivery." 
 
+### Exercise 2
+Create a dataElement called "Facility Live Births" and a categoryCombo called "Mothers Age at Delivery" that uses the category you just made as it's only dimension.  Starting to see how this stuff works together?
+```{r}
+# First make the categoryCombo we need
+# Hint: the relevant function uses a similar method as createDHIS2_CategoryOption.  You'll need to extract the category ID and pass it to the payload creation function. 
+categoryCombo_for_upload <- NULL # replace NULL with your code
 
+# Upload it to dhis2
+categoryCombo_created <- NULL # replace NULL with your code
 
+# Extract the uid created. Don't forget to use content() and then get the uid!
+categoryCombo_id <- NULL 
 
+# Make the dataElement 
+dataElement_for_upload <- NULL # replace NULL with your code
 
+# Post the dataElement
+dataElement_created <- NULL # replace NULL with your code
+```
 
+Same steps as you'd have to do in the UI right?  Well, maybe a few more things here, but we're able to script things more easily. 
 
+### Batch POSTing
+The process you just learned is great and useful when you just want to make one or two new objects in the system, but what about when you have LOTS of metadata to upload?  It's going to be much more difficult, especially if you think about all of the related dependencies of even just one dataElement+dimensions setup.  Let's look at how to do this with batch uploads. 
 
+Remember *getDHIS2_systemIds()*?  We'll use that a lot in this section to pre-generate the ID values we need instead of letting DHIS2 make them for us.  That gives us more control over the relationships between our objects, and reduces the number of times we're having to parse out responses from a server just to make a new payload to send again. 
 
+Let's think about a similar situation like Exercises 1 and 2 proposed where we want to create a dataElement with some disaggregations.  We'll make a dataElement called "TB Testing" with dimensions of "Age" ("Under 15" and "15+") and "Status" ("Positive", "Negative", "Unknown").  We need to create the categoryOptions, then the categories, then the categoryCombo, and finally the dataElement. First, let's make the categoryOptions.  Instead of making individual objects for each object type, I'm going to make one list called *objects_for_upload* and each first-level element will be a named list that relates to the specific object type. 
+```{r}
+# make character vectors of the options we want
+age_opts <- c("Under 15", "15+")
+status_opts <- c("Positive", "Negative", "Unknown")
 
+# Generate ID values for both sets of categoryOptions
+age_opt_ids <- getDHIS2_systemIds(length(age_opts), usr, pwd, url)
+status_opt_ids <- getDHIS2_systemIds(length(status_opts), usr, pwd, url)
 
+```
 
+We have vectors representing the ids and values for each categoryOption now.  Let's use a *for* loop to make them into categoryOption objects for upload.  I'm using a for loop instead of lapply because we have two things we need to look at.  By using indexing (position 1, 2, etc), we can make sure we're looking at one ID and one name for each. There are faster ways to do this, but to show how this is done, I'm doing it this way. 
 
+You'll notice in the code below that I create a *tmp* object with the categoryOption just like you did in the exercises above.  Then I append it onto the full list of categoryOptions.  It's important to note that I wrap the *tmp* object into another list().  This keeps everything organized.  If you look at *objects_for_upload$categoryOptions*, each element inside of that will be one categoryOption.  Don't worry if it is confusing for now.  It will come with practice. 
+```{r}
+# Remember how indexing works, I can call age_opts[1] and get "Under 15" back or age_opt_ids[1] and get whatever DHIS2 generated
+objects_for_upload <- list('categoryOptions' = list()) # empty list of lists to start
 
+# first let's do the age options
+for (i in 1:length(age_opts)) {
+  tmp <- createDHIS2_CategoryOption(age_opt_ids[i], age_opts[i])
+  objects_for_upload$categoryOptions %<>% append(list(tmp))
+}
 
+# and now the status options
+for (i in 1:length(status_opts)) {
+  tmp <- createDHIS2_CategoryOption(status_opt_ids[i], status_opts[i])
+  objects_for_upload$categoryOptions %<>% append(list(tmp))
+}
+
+print(objects_for_upload)
+```
+
+***A quick note on piping ***
+
+You may have seen the *%<>%* operator in the code block above.  I've held off using pipes until now, but often they are very useful to simplify otherwise verbose code. The *%<>%* above is called a *compound assignment* operator which means it takes an object in and then assigns the result back in the same place. 
+
+The following code chunks use piping operators from the *magrittr* library.  More information can be found at the [RStudio Blog](https://blog.rstudio.com/2014/12/01/magrittr-1-5/).  Here's a quick example of the *%<>%* (compound assignment) that you'll see, which modifies an object in place.  Each of the cleaning functions takes the entire dataframe, does its cleaning procedures, and then returns the full dataframe again. 
+```{r}
+example <- 1:20
+# one-way pipe runs but does not modify start object
+cat('One way piping ----------------------\n\n')
+example %>% head() %>% print()
+print(example)
+
+# two-way, compound assignment, modifies the existing object in place
+cat('Compound assignment piping ----------\n')
+example %<>% head()
+print(example)
+```
+
+The *magrittr* package is sourced when you first load the *settings.R* file since many of the underlying helper functions use it.  Remember that if you're working on something other than dhis2R work, you'll need to load the library yourself. 
+
+Phew, let's make the categories now.  We'll use a similar process and keep adding to *objects_for_upload*.  Because there are only two, I'm not going to loop this time. 
+```{r}
+# get the ids
+cat_ids <- getDHIS2_systemIds(2, usr, pwd, url)
+
+# you've probably noticed by now that most things get stored in a list of lists
+categories <- list(
+  # Age category
+  createDHIS2_Category(cat_ids[1], 'Age', options = age_opt_ids),
+  # Status category
+  createDHIS2_Category(cat_ids[2], 'Status', options=status_opt_ids)
+)
+
+objects_for_upload[['categories']] <- categories # this is an alternative way to create a new named element in a list
+print(objects_for_upload)
+
+```
+
+Cool.  It may be a little indimidating for now.  It's easy to mix up how to organize this stuff, and I still get tripped up too.  Don't worry.  DHIS2 will just reject the upload if you do it wrong. :)  Let's add the categoryCombo and dataElement now. 
+```{r}
+# Make the categoryCombo
+cat_combo_id <- getDHIS2_systemIds(1, usr, pwd, url)
+objects_for_upload[['categoryCombos']] <- list(createDHIS2_CategoryCombo(cat_combo_id, 'Age and Status', categories = cat_ids))
+
+# And the dataElement
+de_id <- getDHIS2_systemIds(1, usr, pwd, url)
+# Notice I'm letting most of the settings go to the default values here
+objects_for_upload[['dataElements']] <- list(createDHIS2_DataElement(de_id, 'TB Testing', categoryCombo = cat_combo_id))
+
+print(objects_for_upload)
+
+```
+
+Alright.  We're done right?  Last thing is to post to DHIS2.  For this, we're going to use the special *metadata* endpoint of the API.  Everything before this has pointed at the specific object type, and that is certainly acceptible if you only want to use that method.  This will let you send lots of objects at once. We'll use the same *postDHIS2_metaData()* function to do this.
+```{r}
+result <- postDHIS2_metaData(objects_for_upload, 'metadata', usr, pwd, url)
+print(result)
+```
+
+Bam.  One line of code, and you're done.  Check the demo server for the dataElement, categoryCombo, and categories you just created.  They're all there just ready for you to start collecting data. 
+
+I'm not going to make you do any exercises with that, just know that it is possible.  The notebook on using the Excel config file will use a similar method and has taken care of all of the steps listed above _*for you*_.  All you need to do is upload the data. 
+
+A few other things to keep in mind as you're creating new objects in DHIS2.  If something already exists in the system with that same name, your upload will fail and probably get a 409 error.  This is especially likely when you're making categoryOptions, which most likely already exist. Another area that will most likely cause you pain at some point is the shortName property.  Like the name, it also has to be unique, and has to be less than 50 characters.  If you're trying to upload lots of data elements and start getting issues, it's probably because the shortNames aren't unique.
+
+Take a break.  You deserve it at this point. 

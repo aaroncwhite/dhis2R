@@ -3,7 +3,6 @@ title: "DHIS2R Metadata Creation"
 subtitle: How to create and post metadata to the system.
 output: html_notebook
 ---
-The primary goal of these functions was to make it easier to interact and update DHIS2 from a comfortable programming environment (for me at least) and integrate with existing analysis workflows.  As the DHIS2 API keeps changing, some of these functions are starting to break, but the main interactions are still working. These functions have been tested and working with R version 3.2.4 as of January 2017. It's possible that RCurl works differently for R 3.3.x, so be aware. 
 
 ```{r "setup", include=FALSE}
 # This makes sure we're using the root dhis2R directory when running the file

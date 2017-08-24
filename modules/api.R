@@ -315,6 +315,11 @@ postDHIS2_Values <- function(df, splitBy, usr, pwd, url, type='dataValueSets') {
   return(list('results' = results, 'chunks' = chunks))
 }
 
+postDHIS2_updateAnalytics <- function(usr, pwd, url) {
+  # Kick off the analytics table generation on a dhis2 instance
+  return(POST(paste0(url, 'resourceTables/analytics'), authenticate(usr, pwd)))
+}
+
 postDHIS2_fileResource <- function(file, usr, pwd, url) {
   # post a file resource to dhis2 for use later
   # returns structured json response from dhis2

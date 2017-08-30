@@ -36,7 +36,10 @@ getDHIS2_dataSet <- function(dataSet, orgUnit, start, end, usr, pwd, url, childr
   if (df_output & length(content(resp)) > 0) {
     # the csv export option seems to have broken, so this will have to replace it. 
     resp <- content(resp)$dataValues
-    resp <- list_to_df(lapply(resp, function(x) as.data.frame.list(x)))
+    resp <- list_to_df(lapply(resp, function(x) as.data.frame.list(x, stringsAsFactors = F)))
+    resp[,c('dataElement', 'orgUnit', 'categoryOptionCombo', 'attributeOptionCombo', 'storedBy')] %<>% apply(2, as.character)
+    resp[,c('period', 'value')] %<>% apply(2, as.numeric)
+    resp[,c('lastUpdated')] %<>% as.Date(as.character(.))
     return(resp)
   } 
   else {

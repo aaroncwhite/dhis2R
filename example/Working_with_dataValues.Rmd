@@ -76,7 +76,7 @@ ds_for_upload <- ds_data[,c('dataElement', 'period', 'orgUnit', 'categoryOptionC
 ds_for_upload$value <- sample(1:300, nrow(ds_for_upload), replace = T)
 ```
 
-So we've created our pretend upload for January through June on the ART monthly summary dataSet.  Let's post it using *postDHIS2_Values(df, splitBy, usr, pwd, url)*.  What is `splitBy`?  Basically, I found that the API was timing out when I was trying to send large datasets up to the system.  `splitBy` specifies a number of rows to include in each payload sent to the system.  I've found setting `splitBy=1000` to work pretty well.  It automatically will distribute out any lingering rows that don't perfectly divide by the number you specify. The function for that is *calcSplits()* and is in the *utilities.R* file. 
+So we've created our pretend upload for January through June on the ART monthly summary dataSet.  Let's post it using *postDHIS2_Values(df, splitBy, usr, pwd, url)*.  What is `splitBy`?  Basically, I found that the API was timing out when I was trying to send large datasets up to the system.  `splitBy` specifies a number of rows to include in each payload sent to the system.  I've found setting `splitBy=750` to work pretty well.  It automatically will distribute out any lingering rows that don't perfectly divide by the number you specify. The function for that is *calcSplits()* and is in the *utilities.R* file. 
 
 For now let's upload the data and see if it's different. 
 ```{r}

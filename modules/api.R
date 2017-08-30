@@ -243,13 +243,13 @@ getDHIS2_metadata <- function(usr, pwd, url, individual_endpoints=T, objects=.co
 }
 
 # PUT ----------------------------------------------------------------------------------------
-putDHIS2_metaData <- function(upload, usr, pwd, url, verbose=T) {
+putDHIS2_metaData <- function(upload, id, obj_type, usr, pwd, url, verbose=T) {
   # put meta data to DHIS2 instance.  this is for updating existing objects
   # you must already have the appropriate href. this will update the object in 
   # it's entirety.
 
   if (verbose==T) cat('Updating')
-  req <- PUT(url, authenticate(usr, pwd), body= upload, encode='json')
+  req <- PUT(paste0(url, obj_type, '/', id), authenticate(usr, pwd), body= upload, encode='json')
   
   flush.console()
   return(req)
@@ -317,6 +317,7 @@ postDHIS2_Values <- function(df, splitBy, usr, pwd, url, type='dataValueSets') {
 
 postDHIS2_updateAnalytics <- function(usr, pwd, url) {
   # Kick off the analytics table generation on a dhis2 instance
+  # The server will return an empty 200 response if it successfully starts
   return(POST(paste0(url, 'resourceTables/analytics'), authenticate(usr, pwd)))
 }
 

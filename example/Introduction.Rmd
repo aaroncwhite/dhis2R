@@ -43,7 +43,7 @@ source('new_instance_setup.R')
 
 Almost ready to go.  Last thing we need to do is set our access credentials using *setDHIS2_credentials()*.
 ```{r}
-setDHIS2_credentials('demo', credentials_file = '.credentials_template')
+setDHIS2_credentials('dhis2_demo', credentials_file = '.credentials_template')
 ```
 Let's break that down.  The first part *'demo'* says we want to use the dhis2.org demo server.  But where did that come from?  You probably guessed it, I've stored that information in a file called *.credentials_template* and explicitly told setDHIS2_credentials to look there for the information. 
 

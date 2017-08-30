@@ -18,6 +18,8 @@ Try executing this chunk by clicking the *Run* button within the chunk or by pla
 ```{r}
 # Import the functions and your username, password, and url settings defined in settings.R
 source('settings.R') 
+setDHIS2_credentials('dhis2_demo')
+
 ```
 
 # Creating and posting metadata

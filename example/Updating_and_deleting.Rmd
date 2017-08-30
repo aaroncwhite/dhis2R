@@ -1,0 +1,121 @@
+---
+title: "DHIS2R Updating and Deleting MetaData Objects"
+subtitle: How to update and delete objects in the system
+output: html_notebook
+---
+
+Often you'll find yourself needing to update metaData objects that already exist in the system, and you can't just create new ones.  Other times, you maybe created a set of dataElements and disaggregations for a form that just dramatically changed, or you realized the way you modeled the data isn't the best and want to start over.  This notebook will cover updating metaData and deleting metaData because you'll have to do it eventually. 
+
+
+```{r "setup", include=FALSE}
+# This makes sure we're using the root dhis2R directory when running the file
+require("knitr")
+opts_knit$set(root.dir = "../")
+```
+
+Note:
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+# Import the functions and your username, password, and url settings defined in settings.R
+source('settings.R') 
+setDHIS2_credentials('dhis2_demo')
+```
+
+## Updating MetaData
+You made a bunch of dataElements and realized you need to make zero a significant value.  You added categoryCombinations and then realized that you forgot to put a prefix on the objects.  You want to change the view permissions on a set of dataElements, categoryCombos, categories, and categoryOptions.  One of these situations (or all of them) will happen at some point as you're working with DHIS2. 
+
+Let's start by making a dataElement to work with for these examples:
+```{r}
+de_upload <- createDHIS2_DataElement(NULL, 'HIV Testing') # I'm leaving most of the options as the defaults
+r <- postDHIS2_metaData(de_upload, 'dataElements', usr, pwd, url)
+if(r$status_code == 201) cat("Let's go!") else cat("Something went wrong!")
+```
+
+Alright, we have a dataElement called "HIV Testing", but you forgot to put the categoryCombo disaggregation of age.  There are multiple ways to update an already existing object.  The first is to *PUT* an object, which updates all of the properties. You need to download the object info using *getDHIS2_elementInfo()*, update the property you want to update, and then repost using *putDHIS2_metaData()*.  Let's update that dataElement to have a categoryCombo disaggregation of "HIV age" which already exists in the demo server.  It has the id "Wfan7UwK8CQ".  See the previous example notebooks on how you might look the id up using the API. 
+```{r}
+# Get the dataElement we want to change. We'll extract the uid from the response from before.
+r <- content(r)
+de_id <- r$response$uid
+de_info <- getDHIS2_elementInfo(de_id, 'dataElements', usr, pwd, url)
+
+
+# Now update the categoryCombo id associated. Right now it is set to default
+print(de_info$categoryCombo$id)
+
+# we'll change it to the HIV age categoryCombo
+de_info$categoryCombo$id <- 'Wfan7UwK8CQ'
+print(de_info$categoryCombo$id)
+
+# Send it back to the server
+r <- putDHIS2_metaData(de_info, de_info$id, 'dataElements', usr, pwd, url)
+if(r$status_code == 200) cat("It worked!") else cat("Something went wrong!")
+```
+
+Notice how *putDHIS2_metaData()* took a few more arguments at the beginning of the function?  Since we're replacing something that already exists, we can't just send it anywhere in DHIS2.  The system already expects the dataElement "HIV Testing" to exist, so we have to be specific in placing it back in the same spot.  The function is expecting six arguments: *putDHIS2_metaData(object_for_upload, existing_object_id, object_type, username, password, url)*
+
+The next function, *patchDHIS2_metaData()* works the same way.  The main difference is that instead of replacing the whole object, you can modify only specific parts.  Let's update the same dataElement again to store zero values. Remember, if you're not sure what to call the property, it still can be helpful to download the whole object and see the property names. 
+```{r}
+upload <- list('zeroIsSignificant' = 'true')
+r <- patchDHIS2_metaData(upload, de_info$id, 'dataElements', usr, pwd, url)
+if(r$status_code == 200) cat("It worked!") else cat("Something went wrong!")
+```
+
+*patchDHIS2_metaData()* can work for multiple properties too.  Just add them all to the same payload and then send to the system. 
+```{r}
+# Update formName and description
+upload <- list('formName' = 'Number of HIV Tests this month',
+               'description' = 'The number of HIV tests performed')
+r <- patchDHIS2_metaData(upload, de_info$id, 'dataElements', usr, pwd, url)
+if(r$status_code == 200) cat("It worked!") else cat("Something went wrong!")
+```
+
+## Deleting MetaData
+What if you need to delete something?  *deleteDHIS2_objects* can handle that for you.  It supports a character vector of ids or a string pattern to match on.  It will look at each object type you want, and then prompt for confirmation before deleting things.  I've made this function intentionally difficult to use and a bit slow because you should not take deleting things lightly.  **There could be unintended consequences!**
+
+Let's delete that dataElement we just created above.  It should still be stored in `de_info`, so we'll pull the uid from there.  The general format of using is as follows: *deleteDHIS2_objects(obj_names, ids, obj_types, username, password, url)*.  Note that you can pass either a character vector of `ids` OR `names`, but not both. Here's how to do it with one id first. 
+```{r}
+r <- deleteDHIS2_objects(ids= de_info$id, obj_types = 'dataElements', usr=usr, pwd=pwd, url=url, prompt = F)
+print(r$summary)
+```
+
+Notice how I had to specify `usr=usr, pwd=pwd, url=url`?  I wasn't kidding about making it intentionally difficult.  You'll always have to do this since the function looks for `obj_names` or `ids` first.  The last part, `prompt` determines if the function should prompt you to double check that you've done it correctly.  This defaults to `TRUE` to make sure you've really thought about what you're doing. 
+
+You'll also notice in the response that our response from the function, `r`, contains a `summary` dataframe that stores the results of the deletes and what status code came back.  You could also examin the specific responses by looking at the `r$responses` list element where the original *httr* response is stored. 
+
+Let's do a batch delete now.  First, we need to create some dataElements and categoryOptions to delete. I'll store them in `de_ids` and `co_ids` respectively.
+```{r}
+create <- paste0('DE_Example', 1:10)
+de_r <- lapply(create, function(x) postDHIS2_metaData(createDHIS2_DataElement(NULL, x), 'dataElements', usr, pwd, url))
+create <- paste0('CO_Example', 1:10)
+co_r <- lapply(create, function(x) postDHIS2_metaData(createDHIS2_DataElement(NULL, x), 'categoryOptions', usr, pwd, url))
+
+de_ids <- sapply(de_r, function(x) content(x)$response$uid)
+co_ids <- sapply(co_r, function(x) content(x)$response$uid)
+```
+
+
+OK, so I know a batch of ids that I need to delete.  You can pass all of them at once to *deleteDHIS2_objects*.  Let's try:
+```{r}
+r <- deleteDHIS2_objects(ids=de_ids, obj_types = 'dataElements', usr=usr, pwd=pwd, url=url, prompt=F)
+print(r$summary)
+```
+
+Great.  Looks like all had a status of 200 and were successfully deleted.  Let's try using name matching now. You'll need to open your console pane to answer the prompts on this one!
+```{r, echo=F, results='hide'}
+# First I'll create those dataElements again
+create <- paste0('DE_Example', 1:10)
+de_r <- lapply(create, function(x) postDHIS2_metaData(createDHIS2_DataElement(NULL, x), 'dataElements', usr, pwd, url))
+```
+
+Copy and paste this code block into your console and answer the prompts:
+```
+# Now try deleting all of them at once based on "_Example" in the name
+r <- deleteDHIS2_objects('_Example', obj_types = c('dataElements', 'categoryOptions'), usr=usr, pwd=pwd, url=url)
+print(r$summary)
+```
+
+The function will prompt you with a dataframe that contains all of the objects that matched based on the pattern you gave it.  In this case, we'd expect a dataframe of 10 rows.  You can select all of them for deletion using indexing on the rows by typing `1:10`, but if you only wanted to delete some, you can give an integer vector specifying only the rows you want to delete such as `c(1,4,6:10)`.  The function will do this for each object type you specifiy in `obj_types`. 
+

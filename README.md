@@ -11,11 +11,11 @@ More information about DHIS2 can be found at www.dhis2.org.
 ## Example Notebooks
 I've developed several Example Notebooks to show how to use the different functionality of this toolkit. 
 
-* **Basic Interactions**
-    + [Introduction and Getting Data](example/Introduction.Rmd)
-    + [Payload Creation and Posting](example/Payloads_and_posting.Rmd)
+* **Interactions**
+    + [Introduction and Getting MetaData](example/Introduction.Rmd)
+    + [Payload Creation and Posting MetaData](example/Payloads_and_posting.Rmd)
     + [Updating and Deleting MetaData](example/Updating_and_deleting.Rmd)
-  
+    + [Getting and Sending DataValues](example/Working_with_dataValues.Rmd)
   
   
   

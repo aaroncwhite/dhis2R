@@ -1,0 +1,137 @@
+---
+title: "Working with DataValues"
+author: "Aaron White"
+date: "August 30, 2017"
+output: html_document
+---
+
+
+```{r "setup", include=FALSE}
+# This makes sure we're using the root dhis2R directory when running the file
+require("knitr")
+opts_knit$set(root.dir = "../")
+```
+
+Note:
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+# Import the functions and your username, password, and url settings defined in settings.R
+source('settings.R') 
+setDHIS2_credentials('dhis2_demo')
+```
+
+# Table of Contents
+* [Getting DataValues][#getting_datavalues]
+* [Sending DataValues][#sending_datavalues]
+* [Deleting DataValues][#deleting_datavalues]
+
+## Getting DataValues
+You've finally made it to the interesting part.  You know enough to navigate the API and find relevant metaData information.  What about dealing with data that's been entered in the system?  Luckily, the API is consistent, and we just need to point at a different endpoint to do this.  The function *getDHIS2_dataSet()* is written to interact with that endpoint since it requires a few more parameters.  Let's take a look.  
+```{r}
+#Don't remember the dataSets available?  Use getDHIS2_Resource to find out what's there
+ds <- getDHIS2_Resource('dataSets', usr, pwd, url)
+print(ds)
+```
+
+Let's take a look at the "ART monthly summary" dataSet.  We'll need to also give an orgUnit to determine where we get data from.  DHIS2 allows you to give one parent orgUnit and then return all of the child data that's related.  Let's just use "Sierra Leone" since that's the top level for now. The two other arguments are `startDate` and `endDate`.  Obviously, these relate to the timebounds you want on the data downloaded.
+```{r}
+ds_data <- getDHIS2_dataSet('ART monthly summary', 'Sierra Leone', '2017-01-01', '2017-06-30', usr, pwd, url)
+head(ds_data)
+```
+
+*getDHIS2_dataSet()* automatically sets `children=TRUE`, so you're getting data for all orgUnits where data were submitted.  If you want to only get that specific orgUnit's data, you can set it to `FALSE`.
+```{r}
+ds_data <- getDHIS2_dataSet('ART monthly summary', 'Sierra Leone', '2017-01-01', '2017-06-30', usr, pwd, url, children = FALSE)
+head(ds_data)
+```
+
+You can see for the Sierra Leone orgUnit, nothing has been submitted.  
+
+*getDHIS2_dataSet()* is looking up the dataSets and orgUnits before actually hitting the *dataValues* endpoint and looking up the proper ids for you, but you can also supply them directly.  This is especially useful if you're trying to download multiple dataSets since it's redundant to download the dataSet and orgUnit info more than once.  Instead, you can look them up before and pass them to the function in the same location.  Just set `look_up_names=FALSE` to skip that step!
+```{r}
+# I've already looked up the ids and will pass them here.  You can also script that process as well.
+ds_data <- getDHIS2_dataSet('lyLU2wR22tC', 'ImspTQPwCqd', '2017-01-01', '2017-06-30', usr, pwd, url, lookup_names = FALSE)
+head(ds_data)
+```
+
+Finally, *getDHIS2_dataSet()* is transforming a JSON response from the server into a dataframe that is easier on the eyes.  If you want to keep it as a nested list in R, set `df_output=FALSE`. 
+```{r}
+# I've already looked up the ids and will pass them here.  You can also script that process as well.
+ds_data_list <- getDHIS2_dataSet('lyLU2wR22tC', 'ImspTQPwCqd', '2017-01-01', '2017-06-30', usr, pwd, url, lookup_names = FALSE, df_output = FALSE)
+ds_data_list$dataValues[[1]]
+```
+
+The other functions we'll deal with expect a dataframe, so use that at your own risk!
+
+## Sending DataValues
+You might need to send dataValues up to the system too.  We can do that with *postDHIS2_Values()*, and it works similar to the other metaData functions and takes a dataframe that you just downloaded.  The columns you *need* are `dataElement`, `period`, `orgUnit`, `categoryOptionCombo`, `attributeOptionCombo`, and `value`. The others are optional. Let's make a new data object to upload and generate random values for the upload. 
+```{r}
+# take just the columns we need
+ds_for_upload <- ds_data[,c('dataElement', 'period', 'orgUnit', 'categoryOptionCombo', 'attributeOptionCombo', 'value')]
+
+# make some fake data using sample()
+ds_for_upload$value <- sample(1:300, nrow(ds_for_upload), replace = T)
+```
+
+So we've created our pretend upload for January through June on the ART monthly summary dataSet.  Let's post it using *postDHIS2_Values(df, splitBy, usr, pwd, url)*.  What is `splitBy`?  Basically, I found that the API was timing out when I was trying to send large datasets up to the system.  `splitBy` specifies a number of rows to include in each payload sent to the system.  I've found setting `splitBy=1000` to work pretty well.  It automatically will distribute out any lingering rows that don't perfectly divide by the number you specify. The function for that is *calcSplits()* and is in the *utilities.R* file. 
+
+For now let's upload the data and see if it's different. 
+```{r}
+r <- postDHIS2_Values(ds_for_upload, 750, usr, pwd, url)
+```
+
+You can see the summary is printed to the console of how many datapoints were updated, etc.  If you ever want to see that again, you can call `r$results` (where `r` is the name of the object you saved the response to) to print it again.  If there are ignored data points or any conflicts, they will be stored in `r$chunks`.  Each `chunk` has the section of the dataframe (split by `splitBy`) in the `data` element, and any conflict messages from DHIS2 are stored in `conflicts`.  Most likely, the conflicts have to do with improper data types, or misaligned metaData configurations.  I always get tripped up on the orgUnit opening date and try to submit data before it "existed" according to DHIS2!
+```{r}
+# See the summary
+print(r$results)
+
+# inspect the second chunk
+print(r$chunks[[2]]$conflicts)
+```
+
+Most of the upload worked, but at least when I wrote this (August 2017), some of the attribute option combos were invalid for the period we submitted for.  Let's pull the data again and compare what's there now to what we saw before. 
+```{r}
+new_ds_data <- getDHIS2_dataSet('lyLU2wR22tC', 'ImspTQPwCqd', '2017-01-01', '2017-06-30', usr, pwd, url, lookup_names = FALSE)
+head(new_ds_data)
+```
+
+And the old data:
+```{r}
+head(ds_data)
+```
+
+See how it changed?  There are some rows that haven't, and it's most likely because of the attributeOptionCombo date setting we saw in that response chunk from before.  Let's put the old data back so some poor person looking at the demo doesn't get confused. 
+```{r}
+r <- postDHIS2_Values(ds_data, 750, usr, pwd, url)
+```
+
+And pull the data one more time to show it's back to what we expect:
+```{r}
+replaced_ds_data <- getDHIS2_dataSet('lyLU2wR22tC', 'ImspTQPwCqd', '2017-01-01', '2017-06-30', usr, pwd, url, lookup_names = FALSE)
+head(replaced_ds_data)
+```
+
+## Deleting DataValues
+Be careful with this.  Maybe you screwed up a data import and want to start fresh, or realized that someone was entering training data in the production system and want to remove it.  Whatever the reason, just remember, this can't be undone as with all deletions.  If you delete it and need it back, you'd better hope your system admin has nightly backups you can revert to! 
+
+Just like posting new data, *deleteDHIS2_Values()* takes the same dataframe format.  It should have the following column: `dataElement`, `period`, `orgUnit`, `categoryOptionCombo`, `attributeOptionCombo`, and `value`.  It will look just like our data upload object, so we can use one of the already prepared ones we have (and then put it back afterwards). The function works just like *postDHIS2_Values()*.  Take a look with the `ds_data` object we have already in memory:
+```{r}
+r <- deleteDHIS2_Values(ds_data, 750, usr, pwd, url)
+```
+
+Looks like those same datavalues that have the attributeOptionCombo error were still ignored.  We still successfully delete the remaining datapoints though. Let's check and see what the new dataSet looks like if we download it:
+```{r}
+trimmed_ds_data <- getDHIS2_dataSet('lyLU2wR22tC', 'ImspTQPwCqd', '2017-01-01', '2017-06-30', usr, pwd, url, lookup_names = FALSE)
+nrow(trimmed_ds_data)
+```
+
+Yup, it's just those data points that had the attributeOptionCombo issue.  If you were doing this for real, you would need to change the properties on those in the system and then try the delete again. For now, let's put those datapoints back that we just deleted. 
+```{r}
+r <- postDHIS2_Values(ds_data, 750, usr, pwd, url)
+```
+
+
+

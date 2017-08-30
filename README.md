@@ -14,7 +14,7 @@ I've developed several Example Notebooks to show how to use the different functi
 * **Basic Interactions**
     + [Introduction and Getting Data](example/Introduction.Rmd)
     + [Payload Creation and Posting](example/Payloads_and_posting.Rmd)
-  
+    + [Updating and Deleting MetaData](example/Updating_and_deleting.Rmd)
   
   
   

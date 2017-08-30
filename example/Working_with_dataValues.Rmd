@@ -24,9 +24,9 @@ setDHIS2_credentials('dhis2_demo')
 ```
 
 # Table of Contents
-* [Getting DataValues][#getting_datavalues]
-* [Sending DataValues][#sending_datavalues]
-* [Deleting DataValues][#deleting_datavalues]
+* [Getting DataValues](#getting-datavalues)
+* [Sending DataValues](#sending-datavalues)
+* [Deleting DataValues](#deleting-datavalues)
 
 ## Getting DataValues
 You've finally made it to the interesting part.  You know enough to navigate the API and find relevant metaData information.  What about dealing with data that's been entered in the system?  Luckily, the API is consistent, and we just need to point at a different endpoint to do this.  The function *getDHIS2_dataSet()* is written to interact with that endpoint since it requires a few more parameters.  Let's take a look.  

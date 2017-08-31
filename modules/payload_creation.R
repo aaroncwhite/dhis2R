@@ -280,8 +280,7 @@ prepareDHIS2_dataValues <- function(df, usr, pwd, url) {
   # the data elements must be assigned to a data set with the appropriate frequency
   # and that data set must be assigned to the appropriate org units 
   
-  # NOTE:
-  # right now this ignores attributeOptionCombo since we aren't working with those
+
   cols <- names(df) %in% c('dataElement', 'orgUnit', 'categoryOptionCombo', 'attributeOptionCombo')
   df[,cols] <- apply(df[,cols], 2, as.character)
   
@@ -344,6 +343,29 @@ prepareDHIS2_dataValues <- function(df, usr, pwd, url) {
   return(output)
   
 }
+
+convertDHIS2_IDs <- function(df, usr, pwd, url) {
+  # Convert a dataSet downloaded from DHIS2 with object ids to a 
+  # human readable output
+  
+  # Get the info we want
+  de <- getDHIS2_Resource('dataElements', usr, pwd, url)
+  ou <- getDHIS2_Resource('organisationUnits', usr, pwd, url)
+  
+  # attributeOptionCombos and categoryOptionCombos use the same categoryOptionCombos endpoint
+  coc <- getDHIS2_Resource('categoryOptionCombos', usr, pwd, url)
+  
+  df$dataElement %<>% revalue(make_revalue_map(de$id, de$name), warn_missing=F)
+  df$orgUnit %<>% revalue(make_revalue_map(ou$id, ou$name), warn_missing=F)
+  df$categoryOptionCombo %<>% revalue(make_revalue_map(coc$id, coc$name), warn_missing=F)
+  df$attributeOptionCombo %<>% revalue(make_revalue_map(coc$id, coc$name), warn_missing=F)
+  
+  return(df)
+  
+  
+}
+
+
 
 matchDHIS2_catOptions <- function(opt_combo, de_optionCombos) {
 

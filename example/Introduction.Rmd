@@ -142,7 +142,9 @@ The grep() function allows searching text. Watch out for special characters like
 
 ```{r}
 term_positions <- grep("Accute Flaccid Paralysis", data_elements$displayName) # returns the index positions in the displayName column where a match for the text was found.
-term_positions
+print(term_positions)
+term_positions <- grep("Yellow fever referrals", data_elements$displayName)
+print(term_positions)
 ```
 
 You can use those index positions to print just that section of the data_elements table:
@@ -157,14 +159,15 @@ data_elements$displayName[term_positions] # note that we don't have any comma he
 
 ##### Step 2
 ```{r}
-# Find the specific data element id
-data_element_id <- NULL ## Replace NULL with your code
+# Find the specific data element id and get the data element information
+data_element_id <- NULL     ## Replace NULL with your code
+data_element_info <- NULL   ## Replace NULL with your code
 ```
 
 ##### Step 3
 ```{r}
-# Find the categoryCombo id
-cat_combo_id <- NULL ## Replace NULL with your code to find the id value
+# Find the categoryCombo id: The result should be a value, not a list.
+cat_combo_id <- NULL       ## Replace NULL with your code to find the id value
 ```
 
 ##### Check the answer
@@ -183,11 +186,16 @@ The same principles can be applied to other object types too.  The API is well-s
 # Question 1 -------------------------------------------------------- 
 # What is the organisation level of Njandama MCHP?
 
+# Use getDHIS2_Resource to hit the the organisationUnits endpoint.
 organisation_units <- NULL ## Replace NULL with your code
 
+# Use grep() to search for the facility name in the displayName column of the organisation_units data frame.
+# Then find the ID value for the facility using term positions.
 organisation_unit_id <- NULL ## Replace NULL with your code
+organisation_unit_id <- NULL
 
-organisation_unit_detail <- NULL ## Replace NULL with your code
+# Use getDHIS2_elementinfo to get the information for this organization unit. 
+organisation_unit_detail <- NULL  ## Replace NULL with your code
 
 # Find the level of the Org Unit 
 # Hint: use the names() function on your object to see what high level pieces of information are available.  
@@ -198,12 +206,12 @@ organisation_unit_level <- NULL ## Replace NULL with your code
 # Question 2 -------------------------------------------------------- 
 # How many data sets are collected there?
 # Hint: count the number of child elements using the length function
-n_dataSets <- NULL ## Replace NULL with your code
+n_dataSets <- NULL              ## Replace NULL with your code
 
 
 # Answer Check ------------------------------------------------------
 if (!is.null(organisation_unit_detail) && organisation_unit_level == 4) cat('Organiation unit level correct!') else ('Check your organisation unit level code')
-if (!is.null(organisation_unit_detail) && n_dataSets == 21) cat('Number of data sets correct!') else ('Check your data set code')
+if (!is.null(organisation_unit_detail) && n_dataSets == 24) cat('Number of data sets correct!') else ('Check your data set code')
 
 ```
 

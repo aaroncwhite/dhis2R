@@ -272,7 +272,7 @@ createDHIS2_translation <- function(id, value, property, locale, obj_id, classNa
 
 
 # DATASET TRANSFORMATION -------------------------------------------------------------------
-prepareDHIS2_dataValues <- function(df, usr, pwd, url="https://zl-dsp.pih.org/api/") {
+prepareDHIS2_dataValues <- function(df, usr, pwd, url) {
   # Take a data frame with columns dataElement, period,  orgUnit, categoryOptionCombo, attributeOptionCombo, value
   # and look up each dataElement, find appropriate id and assign appropriate categoryOptionCombo and attributeOptionCombo
   # ids to the dataframe.  Returns and object ready for upload using postDHIS2_dataValues()

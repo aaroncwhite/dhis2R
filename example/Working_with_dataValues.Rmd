@@ -27,6 +27,7 @@ setDHIS2_credentials('dhis2_demo')
 * [Getting DataValues](#getting-datavalues)
 * [Sending DataValues](#sending-datavalues)
 * [Deleting DataValues](#deleting-datavalues)
+* [Converting to Names](#converting-to-names)
 
 ## Getting DataValues
 You've finally made it to the interesting part.  You know enough to navigate the API and find relevant metaData information.  What about dealing with data that's been entered in the system?  Luckily, the API is consistent, and we just need to point at a different endpoint to do this.  The function *getDHIS2_dataSet()* is written to interact with that endpoint since it requires a few more parameters.  Let's take a look.  
@@ -133,7 +134,7 @@ Yup, it's just those data points that had the attributeOptionCombo issue.  If yo
 r <- postDHIS2_Values(ds_data, 750, usr, pwd, url)
 ```
 
-## Converting to human readable format
+## Converting to names
 It's great that you can download and upload data, but those ID values are pretty annoying to work with as you're trying to analyze data, so I wrote a function that translates the ID values to the name values.  There might be an easier way to do this with the API, but this worked for me at the time. The function is *convertDHIS2_IDs()* which takes the same dataframe downloaded from *getDHIS2_dataSet()* along with your credentials and looks up the `dataElement`, `orgunit`, `categoryOptionCombo`, and `attributeOptionCombo` IDs.  
 
 Quick note: The DHIS2 API stores `categoryOptionCombos` and `attributeOptionCombos` in the same `categoryOptionCombos` endpoint.  Confused?  Yea, me too.  

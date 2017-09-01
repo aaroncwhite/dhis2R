@@ -24,9 +24,10 @@ setDHIS2_credentials('dhis2_demo')
 ```
 
 # Table of Contents
-* [Getting DataValues][#getting_datavalues]
-* [Sending DataValues][#sending_datavalues]
-* [Deleting DataValues][#deleting_datavalues]
+* [Getting DataValues](#getting-datavalues)
+* [Sending DataValues](#sending-datavalues)
+* [Deleting DataValues](#deleting-datavalues)
+* [Converting to Names](#converting-to-names)
 
 ## Getting DataValues
 You've finally made it to the interesting part.  You know enough to navigate the API and find relevant metaData information.  What about dealing with data that's been entered in the system?  Luckily, the API is consistent, and we just need to point at a different endpoint to do this.  The function *getDHIS2_dataSet()* is written to interact with that endpoint since it requires a few more parameters.  Let's take a look.  
@@ -76,7 +77,7 @@ ds_for_upload <- ds_data[,c('dataElement', 'period', 'orgUnit', 'categoryOptionC
 ds_for_upload$value <- sample(1:300, nrow(ds_for_upload), replace = T)
 ```
 
-So we've created our pretend upload for January through June on the ART monthly summary dataSet.  Let's post it using *postDHIS2_Values(df, splitBy, usr, pwd, url)*.  What is `splitBy`?  Basically, I found that the API was timing out when I was trying to send large datasets up to the system.  `splitBy` specifies a number of rows to include in each payload sent to the system.  I've found setting `splitBy=1000` to work pretty well.  It automatically will distribute out any lingering rows that don't perfectly divide by the number you specify. The function for that is *calcSplits()* and is in the *utilities.R* file. 
+So we've created our pretend upload for January through June on the ART monthly summary dataSet.  Let's post it using *postDHIS2_Values(df, splitBy, usr, pwd, url)*.  What is `splitBy`?  Basically, I found that the API was timing out when I was trying to send large datasets up to the system.  `splitBy` specifies a number of rows to include in each payload sent to the system.  I've found setting `splitBy=750` to work pretty well.  It automatically will distribute out any lingering rows that don't perfectly divide by the number you specify. The function for that is *calcSplits()* and is in the *utilities.R* file. 
 
 For now let's upload the data and see if it's different. 
 ```{r}
@@ -132,6 +133,20 @@ Yup, it's just those data points that had the attributeOptionCombo issue.  If yo
 ```{r}
 r <- postDHIS2_Values(ds_data, 750, usr, pwd, url)
 ```
+
+## Converting to names
+It's great that you can download and upload data, but those ID values are pretty annoying to work with as you're trying to analyze data, so I wrote a function that translates the ID values to the name values.  There might be an easier way to do this with the API, but this worked for me at the time. The function is *convertDHIS2_IDs()* which takes the same dataframe downloaded from *getDHIS2_dataSet()* along with your credentials and looks up the `dataElement`, `orgunit`, `categoryOptionCombo`, and `attributeOptionCombo` IDs.  
+
+Quick note: The DHIS2 API stores `categoryOptionCombos` and `attributeOptionCombos` in the same `categoryOptionCombos` endpoint.  Confused?  Yea, me too.  
+
+Here's how you'd use it:
+```{r}
+converted_df <- convertDHIS2_IDs(ds_data, usr, pwd, url)
+head(converted_df)
+```
+
+Notice that the `categoryOptionCombo` column contains a comma separated list of disaggregations that are applied to a `dataElement` at the time of collection.  You could split those out using something like *str_split()* into multiple columns.  Be careful with categoryOptionCombos that have a comma in the name though!  It could go horribly wrong.  A more thorough approach would look up the categoryCombination of that dataElement to ensure the disaggregations are correct. 
+
 
 
 

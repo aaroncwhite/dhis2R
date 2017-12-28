@@ -185,13 +185,32 @@ createDHIS2_optionSet <- function(id, name, option_ids = list()) {
   return(payload)
 }
 
-createDHIS2_option <- function(name, code) {
+createDHIS2_option <- function(id = NULL, name, code) {
   # make an option for an option set
   payload <- list('name' = name, 'code' = code)
   if (!is.null(id)) payload <- append(list('id' = id), payload)
   
   return(payload)
 }
+
+createDHIS2_programRuleVariable <- function(id = NULL, name, 
+                                            programRuleVariableSourceType = 'DATAELEMENT_NEWEST_EVENT_PROGRAM_STAGE',
+                                            program,
+                                            programStage,
+                                            dataElement,
+                                            description = ''
+                                            ) {
+  # Make a program rule variable for program entry form logic
+  payload <- list(name = name, 
+                  description = description,
+                  programRuleVariableSourceType = programRuleVariableSourceType,
+                  program = list('id' = program),
+                  programStage = list('id' = programStage),
+                  dataElement = list('id' = dataElement))
+  if (!is.null(id)) payload <- append(list('id' = id), payload)
+  return(payload)
+}
+  
 
 add_href <- function(obj, obj_type, url) {
   # add an href element to a metadata object for "putting"

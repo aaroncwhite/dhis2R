@@ -198,11 +198,11 @@ createDHIS2_programRuleVariable <- function(id = NULL, name,
                                             program,
                                             programStage,
                                             dataElement,
-                                            description = ''
+                                            useCodeForOptionSet = TRUE
                                             ) {
   # Make a program rule variable for program entry form logic
   payload <- list(name = name, 
-                  description = description,
+                  useCodeForOptionSet = tolower(as.character(useCodeForOptionSet)),
                   programRuleVariableSourceType = programRuleVariableSourceType,
                   program = list('id' = program),
                   programStage = list('id' = programStage),
@@ -211,6 +211,32 @@ createDHIS2_programRuleVariable <- function(id = NULL, name,
   return(payload)
 }
   
+createDHIS2_programRule <- function(id = NULL, 
+                                    name, 
+                                    description = '',
+                                    condition = '',
+                                    program) {
+  # Make a program rule
+  payload <- list(name = name,
+                  description = description, 
+                  condition = condition, 
+                  program = list('id' = program))
+  if (!is.null(id)) payload <- append(list('id' = id), payload)
+  return(payload)
+}
+
+createDHIS2_programRuleAction <- function(id = NULL,
+                                          programRuleActionType = 'HIDEFIELD',
+                                          programRule,
+                                          ...
+                                          ) {
+  # Make a program action rule
+  payload <- list(programRuleActionType = programRuleActionType,
+                  programRule = list('id' = programRule), 
+                  ...)
+  if (!is.null(id)) payload <- append(list('id' = id), payload)
+  return(payload)
+}
 
 add_href <- function(obj, obj_type, url) {
   # add an href element to a metadata object for "putting"

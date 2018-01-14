@@ -158,7 +158,13 @@ getDHIS2_elementInfo <- function(id, type, usr, pwd, url, content=T) {
 
 }
 
-getDHIS2_elements <- function(ids)
+
+
+getDHIS2_multiElementInfo <- function(objs, obj_type, usr, pwd, url, add_params= c()){
+  results <- lapply(objs, function(x) getDHIS2_elementInfo(x$id, obj_type, usr, pwd, url))
+  return(results)
+}
+
 
 getDHIS2_objectChildren <- function(obj_id, obj_type, usr, pwd, url) {
   # Download element info for a specific object and return the relevant
@@ -270,6 +276,13 @@ patchDHIS2_metaData <- function(upload, id, obj_type, usr, pwd, url, verbose=T) 
   
   flush.console()
   return(req)
+  
+}
+
+patchDHIS2_multiMetaData <- function(objs, obj_type, usr, pwd, url, update_func=NULL) {
+  if (is.null(update_func )) stop('Define an update function!')
+  resps <- lapply(objs, function(x) patchDHIS2_metaData(update_func(x), x$id, obj_type, usr, pwd, url))
+  return(resps)
   
 }
 

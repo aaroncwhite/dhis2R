@@ -2,6 +2,12 @@
 # Utility functions for finding multiple matches, splitting data into chunks for upload,
 # dataframe scraping, or prompts.
 
+check_responses <- function(response_results) {
+  # Utility to check status codes from API operations on 
+  # multiple objects
+  return(table(sapply(response_results, function(x) x$status_code)))
+}
+
 # DATA MANIPULATION ----------------------------------------------------------
 make_revalue_map <- function(keys, values) {
   values %<>% as.character()

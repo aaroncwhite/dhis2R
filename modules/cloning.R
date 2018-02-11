@@ -293,6 +293,26 @@ mod_element <- function(element, type, prefix='', id=NULL, access='r--------') {
   
 }
 
+getDHIS2_specificExport <- function(obj_ids, usr, pwd, url, remap_cats=T, 
+                                    usr.dest, pwd.dest, url.dest) {
+  # Get specific medatadata info based in input ids from the metadata endpoint
+  # _____________________________________________________
+  # obj_ids => a character vector of ids to lookup, can be any type
+  # usr, pwd, url => credentials and location of source system
+  # remap_cats => boolean, whether to update default ids for categoryCombos, etc
+  # usr.dest, pwd.dest, url.dest => credentials and location of destination system
+  #   only necessary if remap_cats = T
+  spec_md <- GET(sprintf("%smetadata.json?filter=id:in:[%s]", url, paste0(obj_ids %>% unlist(), collapse=",")), authenticate(usr, pwd))
+  if (spec_md$status_code != 200) stop('Something went wrong')
+  
+  spec_md %<>% content() %>% removeDHIS2_userInfo()
+  
+  if (remap_cats) {
+    spec_md %<>% remapDHIS2_defaults(usr, pwd, url, usr.dest, pwd.dest, url.dest)
+  }
+  return(spec_md)
+}
+
 
 getDHIS2_detailedExport <- function(obj_id, obj_type, usr, pwd, url, 
                                     remap_cats = T, 
@@ -314,27 +334,34 @@ getDHIS2_detailedExport <- function(obj_id, obj_type, usr, pwd, url,
   # # Config depends on default category options, etc. need to look them up from the
   # # dest server (or if fully blank could recode ids to match)
   if (remap_cats) {
-    md <- GET(sprintf('%smetadata.json?filter=name:like:default&categoryOptions=true&categories=true&categoryOptionCombos=true&categoryCombos=true',url.dest), authenticate(usr.dest, pwd.dest))
-    obj_map <- map_property(dep_export, 'id')
-    md %<>% content()
-    ids_to_use <- sapply(md[-1], function(x) x[[1]]$id)
-    ids_to_replace <- sapply(dep_export[c('categories', 'categoryOptions', 'categoryOptionCombos', 'categoryCombos')], function(x) x[[1]]$id)
-    # Make the value_pair dataframe to pass to find_replace
-    # TODO: pull this functionality into it's own function outside of the full cloning function
-    # since that was intended for aggregate systems
-    value_pairs <- data.frame('find' = ids_to_replace, 'replace' = ids_to_use, stringsAsFactors = F)
-    
-    # For each row, recursively replace the value across the metadataset.  Since this is
-    # a huge task, there is an option to run it in parallel
-    # this recursively fines all the values in the find column and replaces with respective
-    # replace columns.  :)
-    dep_export <- find_replace(dep_export, value_pairs, obj_map, parallel = T)
-    dep_export[c('categories', 'categoryOptions', 'categoryCombos', 'categoryOptionCombos')] = NULL
-    
+    dep_export <- remapDHIS2_defaults(dep_export, usr, pwd, url, usr.dest, pwd.dest, url.dest)
   }
   
   return(dep_export)
  
+}
+
+remapDHIS2_defaults <- function(md_export, usr, pwd, url, usr.dest, pwd.dest, url.dest) {
+  md <- GET(sprintf('%smetadata.json?filter=name:like:default&categoryOptions=true&categories=true&categoryOptionCombos=true&categoryCombos=true',url.dest), authenticate(usr.dest, pwd.dest))
+  md %<>% content()
+  ids_to_use <- sapply(md[-1], function(x) x[[1]]$id)
+  md_src <- GET(sprintf('%smetadata.json?filter=name:like:default&categoryOptions=true&categories=true&categoryOptionCombos=true&categoryCombos=true',url), authenticate(usr, pwd))
+  md_src %<>% content()
+  ids_to_replace <- sapply(md_src[-1], function(x) x[[1]]$id)
+  # Make the value_pair dataframe to pass to find_replace
+  # TODO: pull this functionality into it's own function outside of the full cloning function
+  # since that was intended for aggregate systems
+  value_pairs <- data.frame('find' = ids_to_replace, 'replace' = ids_to_use, stringsAsFactors = F)
+  
+  # For each row, recursively replace the value across the metadataset.  Since this is
+  # a huge task, there is an option to run it in parallel
+  # this recursively fines all the values in the find column and replaces with respective
+  # replace columns.  :)
+  obj_map <- map_property(md_export, 'id')
+  
+  md_export <- find_replace(md_export, value_pairs, obj_map, parallel = T)
+  md_export[c('categories', 'categoryOptions', 'categoryCombos', 'categoryOptionCombos')] = NULL
+  return(md_export)
 }
 
 removeDHIS2_userInfo <- function(md_export) {

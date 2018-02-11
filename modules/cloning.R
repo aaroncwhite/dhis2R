@@ -294,9 +294,71 @@ mod_element <- function(element, type, prefix='', id=NULL, access='r--------') {
 }
 
 
+getDHIS2_detailedExport <- function(obj_id, obj_type, usr, pwd, url, 
+                                    remap_cats = T, 
+                                    usr.dest, pwd.dest, url.dest) {
+  # Get a detailed metadata export, strip out the user info
+  # _______________________________________
+  # obj_id => id of for dependency export
+  # obj_type => program, dataset, or dashboard
+  # usr, pwd, url => credentails and location of source
+  # remap_cats => boolean, whether to find category ids and replace with default
+  #   dest server info (Seems to happen with pre 2.28, tracker data elements still have
+  #   categories defined and needs to be revalued with dest system)
+  # usr.dest, pwd.dest, url.dest => destination server credentials 
+  #   only necessary if remap_cats = T
+  
+  dep_export <- GET(sprintf("%s%s/%s/metadata.json", url, obj_type, obj_id), authenticate(usr, pwd)) %>% content()
+  dep_export[-1] %<>% removeDHIS2_userInfo()
+  
+  # # Config depends on default category options, etc. need to look them up from the
+  # # dest server (or if fully blank could recode ids to match)
+  if (remap_cats) {
+    md <- GET(sprintf('%smetadata.json?filter=name:like:default&categoryOptions=true&categories=true&categoryOptionCombos=true&categoryCombos=true',url.dest), authenticate(usr.dest, pwd.dest))
+    obj_map <- map_property(dep_export, 'id')
+    md %<>% content()
+    ids_to_use <- sapply(md[-1], function(x) x[[1]]$id)
+    ids_to_replace <- sapply(dep_export[c('categories', 'categoryOptions', 'categoryOptionCombos', 'categoryCombos')], function(x) x[[1]]$id)
+    # Make the value_pair dataframe to pass to find_replace
+    # TODO: pull this functionality into it's own function outside of the full cloning function
+    # since that was intended for aggregate systems
+    value_pairs <- data.frame('find' = ids_to_replace, 'replace' = ids_to_use, stringsAsFactors = F)
+    
+    # For each row, recursively replace the value across the metadataset.  Since this is
+    # a huge task, there is an option to run it in parallel
+    # this recursively fines all the values in the find column and replaces with respective
+    # replace columns.  :)
+    dep_export <- find_replace(dep_export, value_pairs, obj_map, parallel = T)
+    dep_export[c('categories', 'categoryOptions', 'categoryCombos', 'categoryOptionCombos')] = NULL
+    
+  }
+  
+  return(dep_export)
+ 
+}
 
+removeDHIS2_userInfo <- function(md_export) {
+  # requires that the input list have one element per 
+  # dhis2 endpoint (names don't matter)
+  md_export %<>% lapply(function(x) lapply(x, function(y) {
+    srch <- grepl('^user$|userGroupAccesses|userAccesses', names(y))
+    if (any(srch)) {
+      # strip the shit out
+      y[srch] = NULL
+    }
+    y
+  })
+  )
+  return(md_export)
+}
 
-
+saveDHIS2_metadataExport <- function(md_export, filename) {
+  # Save export in UTF-8 format
+  f = file(filename, encoding = 'UTF-8')
+  write(toJSON(program_data), file=f)
+  close(f)
+  # 
+}
 
 
 

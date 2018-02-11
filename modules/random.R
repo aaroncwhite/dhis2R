@@ -30,33 +30,39 @@ generate_tei <- function(structure, orgUnit, enrollmentDate = Sys.Date()) {
   return(structure)
 }
 
-generate_events <- function(event_stages, orgUnit, enrollment, tei, event_date = Sys.Date()) {
-  events <- list()
+generate_events <- function(event_stages, orgUnit, enrollment, tei_id, event_date = Sys.Date()) {
+  new_events <- list()
   for (i in 1:length(event_stages)) {
-    events %<>% append(list(generate_event(event_stages[[i]], orgUnit, enrollment, tei, event_date=event_date)))
+    new_events %<>% append(list(generate_event(event_stages[[i]], orgUnit, enrollment, tei_id, event_date=event_date)))
     # if (event_stages[[i]]$repeatable) {
     #   events %<>% append(lapply(sample(1:3, 1), function(j) {
     #     generate_event(event_stages[[i]], orgUnit, enrollment, tei, event_date)
     #   }))
     # }
   }
-  return(events)
+  return(new_events)
 }
 
 
-generate_event <- function(event_stage, orgUnit, enrollment, tei, event_date = Sys.Date()) {
+generate_event <- function(event_stage, orgUnit, enrollment, tei_id, event_date = Sys.Date()) {
   new_event <- event_stage
-  new_event$dataValues %<>% lapply(function(x) {
-    x$value %<>% sample(1:length(x$value), 1)
-    x
-  })
+
   new_event$status='ACTIVE'
   new_event$orgUnit = orgUnit
   new_event$enrollment = enrollment
   new_event$eventDate = event_date %>% as.character()
-  new_event$trackedEntityInstance <- tei
+  new_event$trackedEntityInstance <- tei_id
   
-  new_event$repeatable <- NULL
+  new_event$dataValues %<>% lapply(function(x) {
+    x$value %<>% sample(1:length(x$value), 1)
+    x
+  })
+  new_event <- new_event[c('program', 'programStage', 'orgUnit', 'eventDate', 'status', 'enrollment', 'trackedEntityInstance', 'dataValues')]
+  
+  if (any(grepl('repeatable', names(new_event)))) {
+    new_event$repeatable <- NULL
+    
+  }
   return(new_event)
 }
 
@@ -165,7 +171,7 @@ select_date <- function(y, nsamp=NULL) {
   min <- prompt_str('Min date: ', validate = ymd)
   max <- prompt_str('Max date: ', validate = ymd)
   if (!is.null(nsamp)) nsamp <- prompt_num('N sample: ')
-  vals <- sample(seq(as.Date(min), as.Date(max), by='day'), nsamp, replace=T) %>% as.character()
+  vals <- sample(seq(ymd(min), ymd(max), by='day'), nsamp, replace=T) %>% as.character()
   return(vals)
 }
 

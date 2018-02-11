@@ -516,7 +516,7 @@ queryDHIS2 <- function(term, term_type, obj_type, usr, pwd, url) {
 }
 
 # Credentials
-setDHIS2_credentials <- function(instance=NA, credentials_file=NA) {
+setDHIS2_credentials <- function(instance=NA, credentials_file=NA, suffix='') {
   # set credentials based on a stored file in the base directory called .credentials
   # this obviously isn't the best/most secure, but it's better than being directly in the file
   # itself
@@ -528,7 +528,7 @@ setDHIS2_credentials <- function(instance=NA, credentials_file=NA) {
   }
   
   for (i in 1:length(credentials[[instance]])) {
-    assign(names(credentials[[instance]][i]), unlist(credentials[[instance]][i]), envir = .GlobalEnv)
+    assign(paste0(names(credentials[[instance]][i]),suffix), unlist(credentials[[instance]][i]), envir = .GlobalEnv)
   }
 }
 

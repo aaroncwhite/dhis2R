@@ -58,7 +58,7 @@ createDHIS2_DataElementGroup <- function(id, name, shortName = NA, aggregationTy
 }
 
 
-createDHIS2_DataElement <- function(id, name, shortName = NA, code="", description="", domainType='AGGREGATE', valueType= 'INTEGER', 
+createDHIS2_DataElement <- function(id=NULL, name, shortName = NA, code="", description="", domainType='AGGREGATE', valueType= 'INTEGER', 
                                     aggregationType='SUM', categoryCombo='default', formName="", other_properties=list()
                                     ) {
   # make a list object for upload to DHIS2.  requires a name at least
@@ -148,10 +148,10 @@ createDHIS2_program <- function(id, name, shortName = NA, description = '', trac
   return(payload)
 }
 
-createDHIS2_programStage <- function(id, name, programId, dataElements = NA, other_properties=list()) {
+createDHIS2_programStage <- function(id =NULL, name, programId, dataElements = c(), other_properties=list()) {
   payload <- list('name' = name, 'program' = list('id' = programId)) 
-  if (!is.na(dataElements)) {
-    payload <- append(payload, list('programStageDataElements' = list(lapply(dataElements, function(a) list('id' = a)))))
+  if (!is_empty(dataElements)) {
+    payload <- append(payload, list('programStageDataElements' = lapply(dataElements, function(a) list('id' = a))))
   }
   if (!is.null(id)) payload <- append(list('id' = id), payload)
   
@@ -177,10 +177,11 @@ createDHIS2_trackedEntityAttribute <- function(id, name, shortName=NA, aggregati
   
 }
 
-createDHIS2_optionSet <- function(id, name, option_ids = list()) {
+createDHIS2_optionSet <- function(id =NULL, name, option_ids = list(), add_props=list()) {
   # Make an option set for use with Tracker programs
   payload <- list('name' = name, 'options' = option_ids)
   if (!is.null(id)) payload <- append(list('id' = id), payload)
+  if (!is_empty(add_props)) payload %<>% append(add_props)
   
   return(payload)
 }
@@ -244,20 +245,23 @@ add_href <- function(obj, obj_type, url) {
 }
 
 # USERS -----------------------------------------------------------------------------------
-createDHIS2_user <- function(id, firstName, surname, username, password, userRoles, organisationUnits, add_props=list()) {
+createDHIS2_user <- function(id = NULL, firstName, surname, username, password, userRoles, organisationUnits, dataViewOrganisationUnits, add_props=list()) {
   # Create a dhis2 user object for upload, required properties must be stated, additional properties/attributes
   # can be declared with add_props
-  
-  
-  user <- list('name' = paste(firstName, surname),
+  # https://lists.launchpad.net/dhis2-devs/msg48140.html
+
+  user <- list('id' = id,
+               'name' = paste(firstName, surname),
                'firstName' = firstName,
                'surname' = surname,
-               'userCredentials' = list('username' = username, 
+               'userCredentials' = list('userInfo' = list('id' = id),
+                                        'username' = username, 
                                         'password' = password,
-                                        'userRoles' = lapply(userRoles, function(a) list('name' = a))),
-               'organisationUnits' = lapply(organisationUnits, function(a) list('name' = a))
+                                        'userRoles' = lapply(userRoles, function(a) list('id' = a))),
+               'organisationUnits' = lapply(organisationUnits, function(a) list('id' = a)),
+               'dataViewOrganisationUnits' = lapply(dataViewOrganisationUnits, function(a) list('id' = a))
   )
-  if (!is.null(id)) user <- append(list('id' = id), user)
+  # if (!is.null(id)) user <- append(list('id' = id), user)
   
   user <- append(user, add_props)
   
@@ -266,7 +270,7 @@ createDHIS2_user <- function(id, firstName, surname, username, password, userRol
 }
 
 # ORANISATION UNITS -----------------------------------------------------------------------
-createDHIS2_OrgUnit <- function(id, name, shortName=NA, description='', 
+createDHIS2_OrgUnit <- function(id = NULL, name, shortName=NA, description='', 
                                 openingDate = Sys.Date(), parentId=NA, add_props=list()) {
   # Create an organisation unit in dhis2
   if (is.na(shortName) | is.null(shortName) ) {shortName <- substr(name, 1, 49)} # make sure we have something for short name to post

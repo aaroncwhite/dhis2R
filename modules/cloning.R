@@ -142,7 +142,7 @@ cloneDHIS2_data <- function(usr.src, pwd.src, url.src, usr.dest, pwd.dest, url.d
   from.ds <- getDHIS2_Resource('dataSets', usr.src, pwd.src, url.src, 'periodType')
   upload_results <- list()
   
-  orgUnits.dest <- getDHIS2_Resource('organisationUnits', usr, pwd, url)
+  orgUnits.dest <- getDHIS2_Resource('organisationUnits', usr.dest, pwd.dest, url.dest)
   
   if (is.null(parent_ous)) {
     cat('Trying to auto-match organisationUnits\n')
@@ -212,7 +212,7 @@ cloneDHIS2_data <- function(usr.src, pwd.src, url.src, usr.dest, pwd.dest, url.d
   
   d %<>% convert_src_to_dest(match_on, match_on_prefix, de, orgUnits.dest, catOptCmbo)
   
-  resp <- postDHIS2_Values(d[,c('dataElement', 'orgUnit', 'period', 'categoryOptionCombo', 'attributeOptionCombo', 'value', 'created', 'lastUpdated')], 1000, usr.dest, pwd.dest, url.dest)
+  resp <- postDHIS2_Values(d[,c('dataElement', 'orgUnit', 'period', 'categoryOptionCombo', 'attributeOptionCombo', 'value')], 1000, usr.dest, pwd.dest, url.dest)
   if (clean_files) {
     sapply(list.files(files_dir,full.names = T), file.remove)
   }
@@ -387,5 +387,15 @@ saveDHIS2_metadataExport <- function(md_export, filename) {
   # 
 }
 
+postDHIS2_metadataPackage <- function(md_export, usr, pwd, url, strategy='CREATE_AND_UPDATE') {
+  # Post a payload to the metadata endpoint.  naming this separately
+  # to not conflict with postDHIS2_metaData()
+  # ___________________________________________
+  # md_export => prepared payload, with user info removed
+  # usr, pwd, url => credentials and location of server
+  # 
+  r <- POST(sprintf("%smetadata?&atomicMode=false&importStrategy=%s", url, strategy), authenticate(usr, pwd), body=md_export, encode='json', accept_json())
+  return(r)
+}
 
 

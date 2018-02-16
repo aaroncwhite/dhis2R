@@ -192,7 +192,7 @@ cloneDHIS2_data <- function(usr.src, pwd.src, url.src, usr.dest, pwd.dest, url.d
           d <- dy
         }
         # trim down to just orgUnits in our system
-        d <- d[d$orgUnit %in% orgUnits.dest$id,]
+        # d <- d[d$orgUnit %in% orgUnits.dest$id,]
         
         write.csv(d, paste0(files_dir, gsub("\\/", "-", from.ds$displayName[i]), ".csv"), row.names = F)
       }
@@ -211,6 +211,8 @@ cloneDHIS2_data <- function(usr.src, pwd.src, url.src, usr.dest, pwd.dest, url.d
   de <- getDHIS2_Resource('dataElements', usr.dest, pwd.dest, url.dest)
   
   d %<>% convert_src_to_dest(match_on, match_on_prefix, de, orgUnits.dest, catOptCmbo)
+  d %<>% filter(orgUnit %in% orgUnits.dest$id)
+  
   
   resp <- postDHIS2_Values(d[,c('dataElement', 'orgUnit', 'period', 'categoryOptionCombo', 'attributeOptionCombo', 'value')], 1000, usr.dest, pwd.dest, url.dest)
   if (clean_files) {

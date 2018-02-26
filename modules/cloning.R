@@ -1,5 +1,6 @@
 # Cloning functions for one-way sync between a source DHIS2 instance and destination instance
 library(lubridate)
+library(tidyverse)
 
 # Object types that are pulled from the system.  These are a select set specifically for
 # aggregate space data collection and analysis.  This does NOT cover Tracker related objects. 
@@ -346,14 +347,19 @@ getDHIS2_detailedExport <- function(obj_id, obj_type, usr, pwd, url,
 remapDHIS2_defaults <- function(md_export, usr, pwd, url, usr.dest, pwd.dest, url.dest) {
   md <- GET(sprintf('%smetadata.json?filter=name:like:default&categoryOptions=true&categories=true&categoryOptionCombos=true&categoryCombos=true',url.dest), authenticate(usr.dest, pwd.dest))
   md %<>% content()
-  ids_to_use <- sapply(md[-1], function(x) x[[1]]$id)
+  ids_to_use <- data.frame('replace' = sapply(md[-1], function(x) x[[1]]$id),
+                           'type' = names(md[-1]), stringsAsFactors = F)
   md_src <- GET(sprintf('%smetadata.json?filter=name:like:default&categoryOptions=true&categories=true&categoryOptionCombos=true&categoryCombos=true',url), authenticate(usr, pwd))
   md_src %<>% content()
-  ids_to_replace <- sapply(md_src[-1], function(x) x[[1]]$id)
+  ids_to_replace <- data.frame('find' = sapply(md_src[-1], function(x) x[[1]]$id),
+                               'type' = names(md_src[-1]), stringsAsFactors = F)
+                               
+  
+  
   # Make the value_pair dataframe to pass to find_replace
   # TODO: pull this functionality into it's own function outside of the full cloning function
   # since that was intended for aggregate systems
-  value_pairs <- data.frame('find' = ids_to_replace, 'replace' = ids_to_use, stringsAsFactors = F)
+  value_pairs <- inner_join(ids_to_use, ids_to_replace, by='type')
   
   # For each row, recursively replace the value across the metadataset.  Since this is
   # a huge task, there is an option to run it in parallel
@@ -362,6 +368,7 @@ remapDHIS2_defaults <- function(md_export, usr, pwd, url, usr.dest, pwd.dest, ur
   obj_map <- map_property(md_export, 'id')
   
   md_export <- find_replace(md_export, value_pairs, obj_map, parallel = T)
+  # md_export$dataElements %<>% lapply(function(x) {x$categoryCombo = NULL; x} )
   md_export[c('categories', 'categoryOptions', 'categoryCombos', 'categoryOptionCombos')] = NULL
   return(md_export)
 }
@@ -370,7 +377,7 @@ removeDHIS2_userInfo <- function(md_export) {
   # requires that the input list have one element per 
   # dhis2 endpoint (names don't matter)
   md_export %<>% lapply(function(x) lapply(x, function(y) {
-    srch <- grepl('^user$|userGroupAccesses|userAccesses', names(y))
+    srch <- grepl('^user$|userGroupAccesses|userAccesses|access', names(y))
     if (any(srch)) {
       # strip the shit out
       y[srch] = NULL
@@ -384,7 +391,7 @@ removeDHIS2_userInfo <- function(md_export) {
 saveDHIS2_metadataExport <- function(md_export, filename) {
   # Save export in UTF-8 format
   f = file(filename, encoding = 'UTF-8')
-  write(toJSON(program_data), file=f)
+  write(toJSON(md_export), file=f)
   close(f)
   # 
 }

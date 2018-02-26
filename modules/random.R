@@ -19,7 +19,7 @@ generate_tei <- function(structure, orgUnit, enrollmentDate = Sys.Date()) {
   }
   
   
-  enrollmentDate %<>% as.character()
+  enrollmentDate %<>% as.Date() %>% as.character()
   tei$orgUnit <- orgUnit
   tei$enrollments[[1]]$orgUnit <- orgUnit
   tei$enrollments[[1]]$enrollmentDate <- enrollmentDate
@@ -30,33 +30,70 @@ generate_tei <- function(structure, orgUnit, enrollmentDate = Sys.Date()) {
   return(structure)
 }
 
+new_datetime <- function(d, h=NULL, m=NULL, flux=.2) {
+  if (is.null(h)) {
+    h <- sample(0:23,1)
+  }
+  if (is.null(m)) {
+    m <- sample(0:59, 1)
+  }
+  date_val <- d + days(rpois(1, flux)) + hours(h) + minutes(m)
+  return(date_val)
+
+}
+
 generate_events <- function(event_stages, orgUnit, enrollment, tei_id, event_date = Sys.Date()) {
   new_events <- list()
+  # event_date %<>% ymd()
+  date_val = new_datetime(event_date)
+  event_date = event_date + days(rpois(1, 52)) # this is changed to data entry date
   for (i in 1:length(event_stages)) {
-    new_events %<>% append(list(generate_event(event_stages[[i]], orgUnit, enrollment, tei_id, event_date=event_date)))
-    # if (event_stages[[i]]$repeatable) {
-    #   events %<>% append(lapply(sample(1:3, 1), function(j) {
-    #     generate_event(event_stages[[i]], orgUnit, enrollment, tei, event_date)
-    #   }))
-    # }
+    evnt <- generate_event(event_stages[[i]], orgUnit, enrollment, tei_id, event_date=event_date, date_val=date_val)
+    new_events %<>% append(list(evnt))
+    
+    if (event_stages[[i]]$programStage == 'lNmErUNhmC0') {
+      check <- any(sapply(evnt$dataValues, function(x) x$dataElement == 'ijG1c7IqeZb' && x$value %in% c('0', '1', '2', '3', '7')))
+      
+      if (check) {print('EU Dispo ends record - breaking generation'); break}
+    
+    }
+    
+    date_val = new_datetime(date_val)
+    
   }
   return(new_events)
 }
 
 
-generate_event <- function(event_stage, orgUnit, enrollment, tei_id, event_date = Sys.Date()) {
+generate_event <- function(event_stage, orgUnit, enrollment, tei_id, event_date = Sys.Date(), date_val=Sys.Date()) {
   new_event <- event_stage
 
   new_event$status='ACTIVE'
   new_event$orgUnit = orgUnit
   new_event$enrollment = enrollment
-  new_event$eventDate = event_date %>% as.character()
+  new_event$eventDate = event_date %>% as.Date() %>% as.character()
   new_event$trackedEntityInstance <- tei_id
-  
-  new_event$dataValues %<>% lapply(function(x) {
-    x$value %<>% sample(1:length(x$value), 1)
-    x
-  })
+  new_dv <- list()
+  for (x in new_event$dataValues) {
+    if (x$valueType == 'DATE') {
+      x$value = date_val %>% as.Date() %>% as.character()
+    }
+    else if (x$valueType == 'hour') {
+      x$value <- as.character(hour(date_val))
+    }
+    else if (x$valueType == 'minute') {
+      x$value <- as.character(minute(date_val))
+    }
+    else{
+      x$value %<>% sample(1:length(x$value), 1)
+    }
+    x$valueType = NULL
+
+    new_dv %<>% append(list(x))
+    date_val %<>% new_datetime(flux=0)
+
+  }
+  new_event$dataValues <- new_dv
   new_event <- new_event[c('program', 'programStage', 'orgUnit', 'eventDate', 'status', 'enrollment', 'trackedEntityInstance', 'dataValues')]
   
   if (any(grepl('repeatable', names(new_event)))) {
@@ -79,7 +116,10 @@ determine_stage_structure <- function(program_stage, nsamp=NULL) {
   de <- lapply(program_stage$programStageDataElements, function(z) {
     info <- getDHIS2_elementInfo(z$dataElement$id, 'dataElements', usr, pwd, url)
     list('dataElement' = z$dataElement$id, 
-         'value' = determine_value_options(list('id' = info))
+         'value' = determine_value_options(list('id' = info), nsamp=nsamp),
+         'valueType' = if_else(grepl('hour', info$name, ignore.case = T), 'hour',
+                                if_else(grepl('minute', info$name, ignore.case = T), 'minute',
+                                info$valueType))
          )
   
   
@@ -143,9 +183,9 @@ determine_value_options <- function(j, nsamp=NULL) {
   else if (grepl('NUMBER|INTEGER', x$valueType)) {
     values <- select_num(x$name, nsamp=nsamp)
   }
-  # else if (grepl('DATE<TIME>', x$valueType)) {
-  #   values <- select_date(x$name, nsamp=nsamp)
-  # }
+  else if (grepl('DATE', x$valueType)) {
+    values <- select_date(x$name, nsamp=nsamp)
+  }
   else if ('mandatory' %in% names(j)) {
     if (j$mandatory) {
       cat(sprintf('unable to determine for %s\n enter at least one value or values', toupper(x$name )))
@@ -166,12 +206,18 @@ find_option_values <- function(x) {
   return(values)
 }
 
-select_date <- function(y, nsamp=NULL) {
-  cat(sprintf('Select date range for %s:\n', toupper(y)))
-  min <- prompt_str('Min date: ', validate = ymd)
-  max <- prompt_str('Max date: ', validate = ymd)
-  if (!is.null(nsamp)) nsamp <- prompt_num('N sample: ')
-  vals <- sample(seq(ymd(min), ymd(max), by='day'), nsamp, replace=T) %>% as.character()
+select_date <- function(y, nsamp=NULL, gen=F) {
+  if (gen) {
+    cat(sprintf('Select date range for %s:\n', toupper(y)))
+    min <- prompt_str('Min date: ', validate = ymd)
+    max <- prompt_str('Max date: ', validate = ymd)
+    if (!is.null(nsamp)) nsamp <- prompt_num('N sample: ')
+    vals <- sample(seq(ymd(min), ymd(max), by='day'), nsamp, replace=T)
+  }
+  else {
+    vals <- c(Sys.Date())
+  }
+
   return(vals)
 }
 

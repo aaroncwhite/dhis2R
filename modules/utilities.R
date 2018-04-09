@@ -144,11 +144,8 @@ find_replace.old <- function(obj, find, replace, ignore = NA, replaced=0) {
   }
 }
 
-find_replace <- function(obj, value_pairs, obj_map, property, parallel=F) {
-  # map the specific property to replace
-  # run through list of value pairs to replace
-  # return final object back
-  
+
+find_replace <- function(obj, obj_map, property, parallel=F, nc=ceiling(detectCores()/2)) {
   if (missing(obj_map) & !missing(property)) {
     cat('Making property map for', property, '\n')
     obj_map <- map_property(obj, property)
@@ -156,30 +153,49 @@ find_replace <- function(obj, value_pairs, obj_map, property, parallel=F) {
   else if (missing(obj_map) & missing(property)) {
     stop('Both obj_map and property are missing.  Please define at least one.')
   }
+  if (!parallel) nc <- 1
+  cl <- makeCluster(nc)
+  registerDoParallel(cl)
   
-  if (parallel) {
-    cl <- makeCluster(detectCores() + 1)
-    registerDoParallel(cl)
-    obj_map %<>% split_map_nodes()
-    
-    obj[sapply(obj_map, function(j) j$node)] <- foreach(i=1:length(obj_map),.packages = 'magrittr', .export = c('find_replace', 'replace_property_value', 'follow_map', 'match_property_value')) %dopar% {
-      find_replace(obj[[obj_map[[i]]$node]], value_pairs, obj_map[[i]]$obj_map, parallel=F)
+  split_nodes <- split_map_nodes(obj_map)
+  
+  k <- foreach(j=split_nodes, 
+              .packages='magrittr',
+              .export='follow_map') %dopar% {
+    for (i in j$obj_map) {
+      obj[[j$node]] %<>% follow_map(i$indices, i$property_value)
     }
-    stopCluster(cl)
-    
-    
+    obj[[j$node]]
   }
-  else {
-    for (i in 1:nrow(value_pairs)) {
-      print(value_pairs[i,])
-      obj <- replace_property_value(obj, value_pairs$find[i], value_pairs$replace[i], obj_map)
-    }
-  }
-
-  return(obj)
+  stopCluster(cl)
+  names(k) <- names(obj)[sapply(split_nodes, function(x) x$node)] 
+  return(k)
 }
 
-map_property <- function(obj, property, prior=c(), name="", ignore=c('user', 'organisationUnits', 'userGroupAccesses')) {
+replace_pairs <- function(value_pairs, obj_map, parallel=F, nc=ceiling(detectCores()/2)) {
+  # map the specific property to replace
+  # run through list of value pairs to replace
+  # return final object back
+  
+  property_values <- sapply(obj_map, function(x) x$property_value)
+  if (!parallel) nc <- 1
+  
+  cl <- makeCluster(nc)
+  registerDoParallel(cl)
+
+  updated_obj_map <- foreach(i=1:nrow(value_pairs),
+                      .packages = 'magrittr',
+                      .export = c('replace_property_value')
+                      ) %dopar% {
+    replace_property_value(value_pairs$find[i], value_pairs$replace[i], obj_map, property_values)
+                                                        
+  }
+  stopCluster(cl)
+    
+  return(updated_obj_map)
+}
+
+map_property <- function(obj, property, prior=c(), name="", ignore=c('user','users', 'organisationUnits', 'userGroupAccesses')) {
   # recursive function to evaluate a list of lists containing dhis2 metadata
   # will search for stated property value ('id', 'name', etc) and return
   # the indices of the nested list and the property_value where that 
@@ -195,8 +211,7 @@ map_property <- function(obj, property, prior=c(), name="", ignore=c('user', 'or
   # $property_value
   # [1] "SQX6LhW3eQi"
   if (is.null(name)) name <- ""
-  
-  
+
   if (!is.list(obj) & name %in% property) { 
     found <- list('indices' = prior,'property_value' = obj, 'property' = name)
     return(list(found))
@@ -209,8 +224,10 @@ map_property <- function(obj, property, prior=c(), name="", ignore=c('user', 'or
     n <- names(obj)
     skip <- (n %in% ignore)
     if (any(skip)) {
-      n <- n[!skip]
-      obj <- obj[!skip]
+      follow <- which(!skip)
+    } 
+    else {
+      follow <- 1:length(obj)
     }
 
     if (length(obj) > 0) {
@@ -218,7 +235,7 @@ map_property <- function(obj, property, prior=c(), name="", ignore=c('user', 'or
       # the hood.  based on tests it is 4x as fast for this operation when there
       # are multiple levels of nested properties (like ids which can be at the root level 
       # for a specific object and also nested deeper for the dependent relationships)
-      recursed <- lapply(1:length(obj), function(i) {
+      recursed <- lapply(follow, function(i) {
         if (length(obj[[i]]) > 0) {
           # cat(n[i], i, '\n')
           prior <- c(prior, i)
@@ -243,34 +260,38 @@ match_property_value <- function(obj_map, find_value) {
   return(which(sapply(obj_map, function(x) grepl(find_value, x$property_value))))
 }
 
-follow_map <- function(obj, indices, find_value, replace_value) {
+follow_map <- function(obj, indices, replace_value) {
   # Recurse into a nested list using a vector of indices
   # when there are no more indices, replace the value and
   # return the nested list intact
   if (length(indices) == 1) {
-    obj[[indices]] %<>% gsub(find_value, replace_value, .)
+    obj[[indices]] = replace_value
     return(obj)
   }
   else if (length(indices) > 1) {
-    obj[[indices[1]]] <- follow_map(obj[[indices[1]]], indices[-1], find_value, replace_value)
+    obj[[indices[1]]] <- follow_map(obj[[indices[1]]], indices[-1], replace_value)
     return(obj)
   }
   
 }
 
-replace_property_value <- function(obj, find_value, replace_value, obj_map) {
+replace_property_value <- function(find_value, replace_value, obj_map, property_values) {
   # Find a specific property_value and replace with another in the main object
   # uses an obj_map created by map_property to define a set of indices and 
   # property values to run through.  This allows for faster replacement
   # since we don't need to recurse through the object multiple times
   # looking for different things
-  
-  matched_obj <- obj_map[match_property_value(obj_map, find_value)]
-  
-  for (i in matched_obj) {
-    obj <- follow_map(obj, i$indices, find_value, replace_value)
+  if (missing(property_values)) {
+    matched <- match_property_value(obj_map, find_value)
   }
-  return(obj)
+  else {
+    matched <- which(grepl(find_value, property_values))
+  }
+
+  for (i in matched) {
+    obj_map[[i]]$property_value %<>% gsub(find_value, replace_value, .)
+  }
+  return(obj_map[matched])
 }
 
 split_map_nodes <- function(obj_map) {

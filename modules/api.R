@@ -241,7 +241,7 @@ getDHIS2_metadata <- function(usr, pwd, url, individual_endpoints=T, objects=.co
     return(metadata)
   }
   else {
-    x <- GET(paste0(url, 'metadata?viewType=detailed'), authenticate(usr, pwd), accept_json())
+    x <- GET(paste0(url, 'metadata'), authenticate(usr, pwd), accept_json())
     
     if (x$status_code != 200) stop('Something went wrong. Are the credentials correct? If the problem continues
                                     try setting individual_endpoints=T.')
@@ -490,6 +490,34 @@ deleteDHIS2_Values <- function(df, splitBy, usr, pwd, url, type='dataValues') {
   print(colSums(results))
   return(list('results' = results, 'conflicts' = conflicts))
 }
+
+deleteDHIS2_teis <- function(program_id, ou_id, usr, pwd, url, nc=detectCores()) {
+  # Delete all tracked entity instances for a program at an organization unit
+  # USE WITH CARE.  THERE IS NO RECOVERY FROM THIS
+  teis <- content(GET(sprintf('%strackedEntityInstances.json?program=%s&ou=%s&ouMode=DESCENDANTS&skipPaging=true',url, program_id, ou_id), authenticate(usr, pwd)))
+  
+  if (length(teis$trackedEntityInstances) > 0) {
+    print('Outputting results to sink/')
+    if (!dir.exists('sink')) {
+      dir.create('sink')
+    }
+    cl <- makeCluster(nc)
+    registerDoParallel(cl)
+    results <- foreach(i=1:nc) %dopar% {sink(sprintf("sink/%s.txt", i))}
+    del_teis <- foreach(x=teis$trackedEntityInstances) %dopar% {
+      library(httr)
+      print(DELETE(sprintf("%strackedEntityInstances/%s", url, x$trackedEntityInstance), authenticate(usr, pwd)))
+    }
+    stopCluster(cl)
+    
+    return(results)
+  }
+  else warning('No TEIs to remove!')
+ 
+  
+}
+
+
 
 # QUERY ----------------------------------------------------------------------------
 

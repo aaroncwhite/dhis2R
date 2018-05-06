@@ -282,6 +282,7 @@ replace_property_value <- function(find_value, replace_value, obj_map, property_
   # since we don't need to recurse through the object multiple times
   # looking for different things
   if (missing(property_values)) {
+    property_values <- sapply(obj_map, function(x) x$property_value)
     matched <- match_property_value(obj_map, find_value)
   }
   else {
@@ -346,7 +347,7 @@ list_to_df <- function(list_obj) {
   # take a single level list object with all of the same type (not nested)
   # and convert to a data frame.
   list_obj <- lapply(list_obj, as.data.frame)
-  new_df <- as.data.frame(rbind.fill.matrix(list_obj))
+  new_df <- as.data.frame(bind_rows(list_obj))
   
   return(new_df)
 }

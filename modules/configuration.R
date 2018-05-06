@@ -1,7 +1,6 @@
 library(XLConnect)
 library(stringi)
 library(magrittr)
-library(plyr)
 library(rlist)
 
 # source('api.R')
@@ -66,10 +65,10 @@ generateDHIS2_configFile <- function(dataSet, usr, pwd, url, filename) {
   catOptions <- getDHIS2_Resource('categoryOptions', usr, pwd, url)
   cat_opt_replace <- catOptions$displayName
   names(cat_opt_replace) <- catOptions$id
-  categories %<>% apply(2, function(x) revalue(x, cat_opt_replace, warn_missing=F))
+  categories %<>% apply(2, function(x) plyr::revalue(x, cat_opt_replace, warn_missing=F))
   
   cat_names <- sapply(cats, function(x) {y <- x$displayName;names(y) <- x$id; y})
-  de_to_write[,grep('Category', colnames(de_to_write))] %<>% apply(2, function(i) revalue(i, cat_names,warn_missing = F))
+  de_to_write[,grep('Category', colnames(de_to_write))] %<>% apply(2, function(i) plyr::revalue(i, cat_names,warn_missing = F))
   
   addWorksheet(wb, 'Data Elements')
   writeData(wb, 'Data Elements', as.data.frame(de_to_write))
@@ -322,7 +321,7 @@ scrapeDHIS2_configFile <- function(filename, usr, pwd, url, warn=T, upload=T) {
     # CREATE CATEGORIES --------------------------------------------------------
     # still contained in catOptions (confusing).  Revalue all names with ids
     opts <- make_revalue_map(cOptions$name, cOptions$id)
-    catOptions[,-1] %<>% apply(2, function(x) revalue(x, opts, warn_missing=F))
+    catOptions[,-1] %<>% apply(2, function(x) plyr::revalue(x, opts, warn_missing=F))
     
     # get new ids
     names(catOptions)[1] <- 'name' 
@@ -365,7 +364,7 @@ scrapeDHIS2_configFile <- function(filename, usr, pwd, url, warn=T, upload=T) {
   catCombos <- dataElements[,c(grep('Category', names(dataElements))),drop=F]
   
   default_categoryCombo <- getDHIS2_Resource('categoryCombos', usr, pwd, url) %>% .[grep('default', .$displayName), 'id']
-  catCombos[,1] <- revalue(catCombos[,1], c('None'='default'), warn_missing = F)
+  catCombos[,1] <- plyr::revalue(catCombos[,1], c('None'='default'), warn_missing = F)
   catCombos[,1][is.na(catCombos[,1])] <- 'default'
   names(catCombos)[1] <- 'name'
   catCombos <- check_ids(catCombos, 'categoryCombos', usr, pwd, url)
@@ -381,7 +380,7 @@ scrapeDHIS2_configFile <- function(filename, usr, pwd, url, warn=T, upload=T) {
   
   if (nrow(catCombos) > 0) {
     cats <- make_revalue_map(catOptions$name, catOptions$id)
-    catCombos[,-c(1, ncol(catCombos))] %<>% apply(2, function(x) revalue(x, cats, warn_missing = F))
+    catCombos[,-c(1, ncol(catCombos))] %<>% apply(2, function(x) plyr::revalue(x, cats, warn_missing = F))
     for(i in 1:nrow(catCombos)) {
       # apply has some weird issues with this, so explicit for loop
       obj <- createDHIS2_CategoryCombo(catCombos$id[i], catCombos$name[i], catCombos[i,-c(1, ncol(catCombos))])
@@ -414,7 +413,7 @@ scrapeDHIS2_configFile <- function(filename, usr, pwd, url, warn=T, upload=T) {
     dataElementGroups %<>% append(list(obj))
   }
   
-  dataElements$dataElementGroup %<>% revalue(make_revalue_map(deGroups$name, deGroups$id), warn_missing=F)
+  dataElements$dataElementGroup %<>% plyr::revalue(make_revalue_map(deGroups$name, deGroups$id), warn_missing=F)
   
   # DATA SETS ---------------------------------------------------------------------
   # this one is going to be slightly different as we need information on two pages
@@ -430,7 +429,7 @@ scrapeDHIS2_configFile <- function(filename, usr, pwd, url, warn=T, upload=T) {
     dataSets %<>% append(list(obj))
   }
   
-  dataElements$dataSet %<>% revalue(make_revalue_map(dSets$name, dSets$id), warn_missing=F)
+  dataElements$dataSet %<>% plyr::revalue(make_revalue_map(dSets$name, dSets$id), warn_missing=F)
   
   de <- list()
   for (i in 1:nrow(dataElements)) {
@@ -472,7 +471,7 @@ check_ids <- function(scraped_obj, obj_type, usr, pwd, url) {
   
   scraped_obj <- merge(scraped_obj, obj_resource[,c('displayName', 'id')], by.y='displayName', by.x='name', all.x=T)
   
-  # scraped_obj$id <- revalue(scraped_obj$name, make_revalue_map(obj_resource$displayName, obj_resource$id), warn_missing = F,)
+  # scraped_obj$id <- plyr::revalue(scraped_obj$name, make_revalue_map(obj_resource$displayName, obj_resource$id), warn_missing = F,)
   scraped_obj$existing <- !is.na(scraped_obj$id)
   if (any(is.na(scraped_obj$id))) {
       scraped_obj$id[is.na(scraped_obj$id)] <- getDHIS2_systemIds(table(is.na(scraped_obj$id))["TRUE"], usr, pwd, url)
@@ -550,7 +549,7 @@ uploadDHIS2_orgUnitHierarchy <- function(file, usr, pwd, url) {
   # fill in parent ids if we have them
   current_ids <- current_orgUnits$id 
   names(current_ids) <- current_orgUnits$displayName
-  new_orgUnits$parent <- revalue(new_orgUnits$parent, current_ids, warn_missing = F)
+  new_orgUnits$parent <- plyr::revalue(new_orgUnits$parent, current_ids, warn_missing = F)
   
   for (ou in 1:nrow(new_orgUnits)) {
     # we're going to upload each record and then update our list as we go

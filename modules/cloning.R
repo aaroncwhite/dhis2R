@@ -1,6 +1,8 @@
 # Cloning functions for one-way sync between a source DHIS2 instance and destination instance
 library(lubridate)
 library(tidyverse)
+library(yaml)
+library(assertthat)
 
 # Object types that are pulled from the system.  These are a select set specifically for
 # aggregate space data collection and analysis.  This does NOT cover Tracker related objects. 
@@ -8,13 +10,22 @@ library(tidyverse)
   # Aggregate dimension objets
   'categoryOptions', 'categories', 'categoryCombos', 'categoryOptionCombos', 
   # Additional answer sets and attributes
-  'optionSets', 'attributes', 
+  'options', 'optionSets', 'attributes', 
   # Data Elements
   'dataElements', 'dataElementGroups', 'dataElementGroupSets',
   # Indicators
   'indicatorTypes', 'indicators', 'indicatorGroups', 'indicatorGroupSets',
   # Data Sets
   'dataEntryForms', 'dataSets')
+
+import_config <- function(config_file){
+  # import and validate a yaml config file for cloning
+  config <- yaml.load_file(config_file)
+  
+  return(config)
+    
+}
+
 
 cloneDHIS2_metaData <- function(usr.src, pwd.src, url.src, usr.dest, pwd.dest, url.dest,
                                 dest_prefix, metaData_objects=.config_objects, parallel=T) {
@@ -40,7 +51,7 @@ cloneDHIS2_metaData <- function(usr.src, pwd.src, url.src, usr.dest, pwd.dest, u
   
   # We don't use groupsets, so we'll completely remove those plus some other
   # system specific things that we dont' want to bring over from the source system
-  ignore <- c('user', 'organisationUnits', 'userGroupAccesses', 'href', 'access', 'dataElementGroupSet', 'indicatorGroupSets', 'dimension')
+  ignore <- c('user', 'userGroupAccesses', 'href', 'access')
   
   # Make some modifications to all meta data elements.  Mainly adding
   # a prefix to name and display name, and making a code that has the 
@@ -116,7 +127,7 @@ cloneDHIS2_metaData <- function(usr.src, pwd.src, url.src, usr.dest, pwd.dest, u
   md <- find_replace(md, data.frame('find' = c(TRUE, FALSE), 'replace' = c('true', 'false')), obj_tf, parallel = F)
   
   # Finally, upload the new metadata.  200s are good.  
-  r <- uploadDHIS2_metaData(md, usr.dest, pwd.dest, url.dest)
+  r <- postDHIS2_metadataPackage(md, usr.dest, pwd.dest, url.dest)
   
   # we'll return the newly formatted metadata object and the response we got just incase something goes wrong. 
   # the metadata can still be re-uploaded using uploadDHIS2_metaData again. 
@@ -172,7 +183,7 @@ cloneDHIS2_data <- function(usr.src, pwd.src, url.src, usr.dest, pwd.dest, url.d
         sub <- try(getDHIS2_dataSet(from.ds$id[i], org, startDate, endDate, usr.src, pwd.src, children='true', url.src, lookup_names = F))
         # Sys.sleep(5)
         if (is.data.frame(sub)) {
-          d <- rbind.fill(d, sub)
+          d <- bind_rows(d, sub)
         }
       }
       
@@ -188,7 +199,7 @@ cloneDHIS2_data <- function(usr.src, pwd.src, url.src, usr.dest, pwd.dest, url.d
             if (nchar(m) == 1) m <- paste0('0', m)
             sub <- d
             sub$period <- paste0(sub$period, m)
-            dy <- rbind.fill(dy, sub)
+            dy <- bind_rows(dy, sub)
           }
           d <- dy
         }
@@ -201,7 +212,7 @@ cloneDHIS2_data <- function(usr.src, pwd.src, url.src, usr.dest, pwd.dest, url.d
   }
   d <- data.frame()
   for (f in list.files(files_dir)) {
-    d %<>% rbind.fill(read.csv(paste0(files_dir, f), stringsAsFactors = F))
+    d %<>% bind_rows(read.csv(paste0(files_dir, f), stringsAsFactors = F))
   }
   # d <- read.csv(d, stringsAsFactors = F)
   
@@ -223,40 +234,12 @@ cloneDHIS2_data <- function(usr.src, pwd.src, url.src, usr.dest, pwd.dest, url.d
   
 }
 convert_src_to_dest <- function(df, match_on, match_on_prefix, dataElements, organisationUnits, categoryOptionCombos) {
-  df$dataElement %<>% revalue(make_revalue_map(gsub(match_on_prefix,"", dataElements[,match_on]), dataElements$id), warn_missing = F)
-  df$orgUnit %<>% revalue(make_revalue_map(gsub(match_on_prefix, "", organisationUnits[,match_on]), organisationUnits$id), warn_missing = F)
-  df$categoryOptionCombo %<>% revalue(make_revalue_map(gsub(match_on_prefix,"", categoryOptionCombos[,match_on]), categoryOptionCombos$id), warn_missing = F)
-  df$attributeOptionCombo %<>% revalue(make_revalue_map(gsub(match_on_prefix,"", categoryOptionCombos[,match_on]), categoryOptionCombos$id), warn_missing = F)
+  df$dataElement %<>% plyr::revalue(make_revalue_map(gsub(match_on_prefix,"", dataElements[,match_on]), dataElements$id), warn_missing = F)
+  df$orgUnit %<>% plyr::revalue(make_revalue_map(gsub(match_on_prefix, "", organisationUnits[,match_on]), organisationUnits$id), warn_missing = F)
+  df$categoryOptionCombo %<>% plyr::revalue(make_revalue_map(gsub(match_on_prefix,"", categoryOptionCombos[,match_on]), categoryOptionCombos$id), warn_missing = F)
+  df$attributeOptionCombo %<>% plyr::revalue(make_revalue_map(gsub(match_on_prefix,"", categoryOptionCombos[,match_on]), categoryOptionCombos$id), warn_missing = F)
   return(df)
 }
-
-getDHIS2_metadata <- function(usr, pwd, url, individual_endpoints=T, objects=.config_objects) {
-  # get the entire metadata, with details from a dhis2 instance
-
-  if (individual_endpoints) {
-    # attempt to get the metadata individually. 
-    cat('Using individual endpoints. This will take a little longer.\n')
-
-    metadata <- lapply(objects, function(x) {
-      cat('\r',x, rep(" ", 20))
-      x <- getDHIS2_Resource(x, usr, pwd, url, '*', transform_to_df = F)
-      flush.console()
-      x
-    })
-    names(metadata) <- objects
-    return(metadata)
-  }
-  else {
-    x <- GET(paste0(url, 'metadata?viewType=detailed'), authenticate(usr, pwd), accept_json())
-    
-    if (x$status_code != 200) stop('Something went wrong. Are the credentials correct? If the problem continues
-                                    try setting individual_endpoints=T.')
-    else return(content(x))
-
-  }
-
-}
-
 
 mod_element <- function(element, type, prefix='', id=NULL, access='r--------') {
   # for transferring metadata from one dhis2 to another
@@ -330,9 +313,13 @@ getDHIS2_detailedExport <- function(obj_id, obj_type, usr, pwd, url,
   #   categories defined and needs to be revalued with dest system)
   # usr.dest, pwd.dest, url.dest => destination server credentials 
   #   only necessary if remap_cats = T
-  
   dep_export <- GET(sprintf("%s%s/%s/metadata.json", url, obj_type, obj_id), authenticate(usr, pwd)) %>% content()
-  dep_export[-1] %<>% removeDHIS2_userInfo()
+  #   
+  #   tryCatch(
+  #   ,
+  #   error = .getDHIS2_detailedMetadataFallback(obj_id, usr, pwd, url)
+  # )
+  dep_export[!grepl('date|system', names(dep_export))] %<>% removeDHIS2_userInfo()
   
   # # Config depends on default category options, etc. need to look them up from the
   # # dest server (or if fully blank could recode ids to match)
@@ -343,6 +330,116 @@ getDHIS2_detailedExport <- function(obj_id, obj_type, usr, pwd, url,
   return(dep_export)
  
 }
+
+.getDHIS2_detailedMetadataFallback <- function(obj_id, usr, pwd, url, parallel = T, nc=detectCores()) {
+  # Attempt to recursively "chase" any ids we find to mimic the metadataDependency export
+  # this should only be used if no access is available to the metadata api endpoint as it
+  # will take much longer and is more prone to error
+  cat('Falling back to individual endpoint strategy. This will take longer...\n')
+  if (!parallel) {
+    nc <- 1
+  }
+  cl <- makeCluster(nc)
+  registerDoParallel(cl)
+  
+  setup <- foreach(i=1:nc) %dopar% {source('settings.R')}
+  
+  lookup <- obj_id 
+  collected <- c()
+  collected_objs <- list()
+  while(T) {
+    cat('Looking up',length(lookup), 'objects')
+    if (length(lookup) > 0) {
+      lookups <- foreach(x = lookup) %dopar% {
+        # get information about the object first then strip out the object type
+        # from the href
+        y <- getDHIS2_elementInfo(x, 'identifiableObjects', usr, pwd, url)
+        obj_type <- gsub(sprintf("%s(.+)/.+", url, x), '\\1', y$href)
+        # return a named list with the object type. we'll use this to organize things 
+        # later
+        y <- list(getDHIS2_elementInfo(x, obj_type, usr, pwd, url))
+        names(y) <- obj_type
+        cat(x, ' ', obj_type,rep(' \t', 20), '\r')
+        flush.console()
+        y
+      }
+      cat('\n')
+      collected %<>% c(lookup)
+      collected_objs %<>% append(lookups)  
+      
+      obj_map <- map_property(lookups, 'id')
+      lookup <- sapply(obj_map, function(x) x$property_value) %>% unique()
+      lookup %<>% .[!(. %in% collected)]
+      
+    }
+    else break
+    
+  }
+  stopCluster(cl)
+  # now that we have everything,
+  # arrange it the right way into a similar metadata package
+  # this method actually gets indicator groups and data element groups
+  # as well, which are not default in the metadata export
+  md <- list()
+  for (i in collected_objs) {
+    md[[names(i)]] %<>% append(i[[1]])
+  }
+  
+  return(md)
+  
+}
+
+
+compareDHIS2_configs <- function(config1, config2, match=NULL, parallel=T, nc=ceiling(detectCores()/2)) {
+  # Compare two configs from dhis2 instances
+  # _________________________________________
+  # config1, config2 => config files from getDHIS2_metadata or getDHIS2_detailedExport
+  # match => a named vector with attribute map
+  #   ex.- c('id' = 'code') would match id from config1 to code from config2
+  # _________________________________________
+  # returns a dataframe of value pairs mapping config1 to config2
+  if (!parallel) nc = 1
+  cl <- makeCluster(nc)
+  registerDoParallel(cl)
+  value_pairs <- data.frame()
+  
+  if (is_null(match)) match <- c('id' = 'id')
+  c1 <- names(match)
+  c2 <- match
+  # Run through all attributes of config1 and see if in config2
+  for (i in names(config1)) {
+    # make a pool of values to compare from config2
+    if (i %in% names(config2)) {
+      md_codes <- sapply(config2[[i]], function(x) x[match])
+    }
+    # if we don't have this attribute, we'll assume they're all missing
+    else {
+      md_codes <- c()
+      warning(sprintf("%s attribute not found in config2!", i))
+    }
+    cat('\n')
+    print(i)
+    md_update <- lapply(config1[[i]], function(j) {
+      if (j[[c1]] %in% md_codes) {
+        cat('\r', j[[c1]], '\t\t')
+        # we found the config1 value in config2, so get the existing id <==> id mapping
+        vp <- data.frame(find = j$id, replace = config2[[i]][[which(j[[c1]] == md_codes)]]$id, type=i, stringsAsFactors = F)
+      }
+      else {
+        # we can't find anything, so make a new id <==> NULL mapping (to be filled in later)
+        vp <- data.frame(find = j$id, replace = NA, type=i, stringsAsFactors = F)
+      } 
+      flush.console()
+      vp
+    }) %>% bind_rows()
+    value_pairs %<>% bind_rows(md_update)
+    
+  }
+  
+  stopCluster(cl)
+  return(value_pairs)
+}
+
 
 remapDHIS2_defaults <- function(md_export, usr, pwd, url, usr.dest, pwd.dest, url.dest) {
   md <- GET(sprintf('%smetadata.json?filter=name:like:default&categoryOptions=true&categories=true&categoryOptionCombos=true&categoryCombos=true',url.dest), authenticate(usr.dest, pwd.dest))
@@ -377,7 +474,7 @@ removeDHIS2_userInfo <- function(md_export) {
   # requires that the input list have one element per 
   # dhis2 endpoint (names don't matter)
   md_export %<>% lapply(function(x) lapply(x, function(y) {
-    srch <- grepl('^user$|userGroupAccesses|userAccesses|access', names(y))
+    srch <- grepl('^user$|userAccesses', names(y))
     if (any(srch)) {
       # strip the shit out
       y[srch] = NULL
